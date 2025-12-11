@@ -110,10 +110,10 @@ pkg_check_modules(FFMPEG REQUIRED
 )
 
 add_executable(VideoPlayer
-    main.cpp
     log.cpp
-    log.h
-    scoped_exit.h
+    main.cpp
+    mainwindow.cpp
+    video_decoder.cpp
 )
 
 target_compile_options(VideoPlayer PRIVATE

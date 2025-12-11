@@ -1,6 +1,6 @@
 #include <QApplication>
-#include <QWidget>
 #include "log.h"
+#include "mainwindow.h"
 #include "scoped_exit.h"
 
 int main(int argc, char *argv[])
@@ -9,16 +9,9 @@ int main(int argc, char *argv[])
     DEFER(shutdown_log());
 
     QApplication app(argc, argv);
-    QWidget window;
-    window.setWindowTitle("VideoPlayer");
-    window.resize(800, 600);
-    window.show();
 
-    LOG_INFO("window shown");
+    main_window w;
+    w.show();
 
-    int ret = QApplication::exec();
-
-    LOG_INFO("application exiting with code {}", ret);
-
-    return ret;
+    return QApplication::exec();
 }
