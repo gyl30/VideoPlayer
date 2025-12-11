@@ -113,6 +113,7 @@ add_executable(VideoPlayer
     log.cpp
     main.cpp
     mainwindow.cpp
+    audio_output.cpp
     video_decoder.cpp
 )
 
