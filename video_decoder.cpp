@@ -1,12 +1,12 @@
-#include "scoped_exit.h"
-#include "audio_output.h"
 #include "video_decoder.h"
+#include "audio_output.h"
+#include "scoped_exit.h"
+#include "log.h"
 
 extern "C"
 {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
-#include <libswscale/swscale.h>
 #include <libswresample/swresample.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
@@ -40,16 +40,10 @@ void video_decoder::run()
 {
     AVFormatContext *fmt_ctx = nullptr;
     AVFrame *frame = nullptr;
-    AVFrame *frame_rgb = nullptr;
     AVPacket *pkt = nullptr;
-    uint8_t *video_buffer = nullptr;
 
     DEFER({
         free_resources();
-        if (video_buffer)
-            av_free(video_buffer);
-        if (frame_rgb)
-            av_frame_free(&frame_rgb);
         if (frame)
             av_frame_free(&frame);
         if (pkt)
@@ -68,14 +62,7 @@ void video_decoder::run()
         return;
     }
 
-    if (init_video_decoder(fmt_ctx))
-    {
-        int num_bytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, video_ctx_->width, video_ctx_->height, 1);
-        video_buffer = static_cast<uint8_t *>(av_malloc(static_cast<size_t>(num_bytes)));
-        frame_rgb = av_frame_alloc();
-        av_image_fill_arrays(frame_rgb->data, frame_rgb->linesize, video_buffer, AV_PIX_FMT_RGB24, video_ctx_->width, video_ctx_->height, 1);
-    }
-
+    init_video_decoder(fmt_ctx);
     init_audio_decoder(fmt_ctx);
 
     frame = av_frame_alloc();
@@ -97,7 +84,7 @@ void video_decoder::run()
 
         if (pkt->stream_index == video_index_)
         {
-            process_video_packet(pkt, frame, frame_rgb, video_buffer);
+            process_video_packet(pkt, frame);
         }
         else if (pkt->stream_index == audio_index_)
         {
@@ -129,16 +116,6 @@ bool video_decoder::init_video_decoder(AVFormatContext *fmt_ctx)
         return false;
     }
 
-    sws_ctx_ = sws_getContext(video_ctx_->width,
-                              video_ctx_->height,
-                              video_ctx_->pix_fmt,
-                              video_ctx_->width,
-                              video_ctx_->height,
-                              AV_PIX_FMT_RGB24,
-                              SWS_BILINEAR,
-                              nullptr,
-                              nullptr,
-                              nullptr);
     return true;
 }
 
@@ -192,7 +169,7 @@ bool video_decoder::init_audio_decoder(AVFormatContext *fmt_ctx)
     return audio_out_->start(44100, 2);
 }
 
-void video_decoder::process_video_packet(AVPacket *pkt, AVFrame *frame, AVFrame *frame_rgb, uint8_t *buffer)
+void video_decoder::process_video_packet(AVPacket *pkt, AVFrame *frame)
 {
     if (avcodec_send_packet(video_ctx_, pkt) != 0)
     {
@@ -201,10 +178,37 @@ void video_decoder::process_video_packet(AVPacket *pkt, AVFrame *frame, AVFrame 
 
     while (avcodec_receive_frame(video_ctx_, frame) == 0)
     {
-        sws_scale(sws_ctx_, frame->data, frame->linesize, 0, video_ctx_->height, frame_rgb->data, frame_rgb->linesize);
+        video_frame vframe;
+        vframe.width = frame->width;
+        vframe.height = frame->height;
 
-        QImage img(static_cast<uchar *>(buffer), video_ctx_->width, video_ctx_->height, QImage::Format_RGB888);
-        emit frame_ready(img.copy());
+        int y_size = frame->width * frame->height;
+        int uv_size = y_size / 4;
+
+        vframe.y_data.resize(static_cast<size_t>(y_size));
+        vframe.u_data.resize(static_cast<size_t>(uv_size));
+        vframe.v_data.resize(static_cast<size_t>(uv_size));
+
+        vframe.y_line_size = frame->width;
+        vframe.u_line_size = frame->width / 2;
+        vframe.v_line_size = frame->width / 2;
+
+        for (int i = 0; i < frame->height; ++i)
+        {
+            memcpy(vframe.y_data.data() + i * vframe.y_line_size, frame->data[0] + i * frame->linesize[0], static_cast<size_t>(vframe.y_line_size));
+        }
+
+        for (int i = 0; i < frame->height / 2; ++i)
+        {
+            memcpy(vframe.u_data.data() + i * vframe.u_line_size, frame->data[1] + i * frame->linesize[1], static_cast<size_t>(vframe.u_line_size));
+        }
+
+        for (int i = 0; i < frame->height / 2; ++i)
+        {
+            memcpy(vframe.v_data.data() + i * vframe.v_line_size, frame->data[2] + i * frame->linesize[2], static_cast<size_t>(vframe.v_line_size));
+        }
+
+        emit frame_ready(vframe);
 
         if (audio_index_ == -1)
         {
@@ -241,11 +245,6 @@ void video_decoder::process_audio_packet(AVPacket *pkt, AVFrame *frame)
 
 void video_decoder::free_resources()
 {
-    if (sws_ctx_ != nullptr)
-    {
-        sws_freeContext(sws_ctx_);
-        sws_ctx_ = nullptr;
-    }
     if (swr_ctx_ != nullptr)
     {
         swr_free(&swr_ctx_);

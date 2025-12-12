@@ -2,10 +2,10 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <QLabel>
-#include <QImage>
+#include "video_frame.h"
 
 class video_decoder;
+class video_widget;
 
 class main_window : public QMainWindow
 {
@@ -17,13 +17,13 @@ class main_window : public QMainWindow
 
    private slots:
     void on_open_action_triggered();
-    void on_frame_ready(const QImage &image);
+    void on_frame_ready(const video_frame &frame);
 
    private:
     void setup_ui();
 
     video_decoder *decoder_ = nullptr;
-    QLabel *display_ = nullptr;
+    video_widget *video_widget_ = nullptr;
 };
 
 #endif

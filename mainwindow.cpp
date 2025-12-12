@@ -1,15 +1,16 @@
+#include "mainwindow.h"
+#include "video_widget.h"
+#include "video_decoder.h"
+#include "log.h"
 #include <QMenuBar>
 #include <QFileDialog>
 #include <QMessageBox>
-#include <QPixmap>
-#include "log.h"
-#include "mainwindow.h"
-#include "video_decoder.h"
 
 main_window::main_window(QWidget *parent) : QMainWindow(parent)
 {
     setup_ui();
     decoder_ = new video_decoder(this);
+    qRegisterMetaType<video_frame>("video_frame");
     connect(decoder_, &video_decoder::frame_ready, this, &main_window::on_frame_ready);
 }
 
@@ -33,10 +34,8 @@ void main_window::setup_ui()
 
     connect(openAction, &QAction::triggered, this, &main_window::on_open_action_triggered);
 
-    display_ = new QLabel(this);
-    display_->setAlignment(Qt::AlignCenter);
-    display_->setText(tr("Please open a video file..."));
-    setCentralWidget(display_);
+    video_widget_ = new video_widget(this);
+    setCentralWidget(video_widget_);
 }
 
 void main_window::on_open_action_triggered()
@@ -50,21 +49,10 @@ void main_window::on_open_action_triggered()
 
     LOG_INFO("selected file {}", fileName.toStdString());
 
-    display_->setText("Loading...");
-
     if (!decoder_->open(fileName))
     {
         QMessageBox::critical(this, tr("Error"), tr("Could not open video file!"));
     }
 }
 
-void main_window::on_frame_ready(const QImage &image)
-{
-    if (image.isNull())
-    {
-        return;
-    }
-
-    QPixmap pixmap = QPixmap::fromImage(image);
-    display_->setPixmap(pixmap.scaled(display_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
-}
+void main_window::on_frame_ready(const video_frame &frame) { video_widget_->update_frame(frame); }
