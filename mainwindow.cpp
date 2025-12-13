@@ -1,34 +1,34 @@
-#include "mainwindow.h"
-#include "video_widget.h"
-#include "video_decoder.h"
-#include "log.h"
 #include <QMenuBar>
 #include <QFileDialog>
 #include <QMessageBox>
+
+#include "log.h"
+#include "mainwindow.h"
+#include "video_widget.h"
+#include "video_decoder.h"
 
 main_window::main_window(QWidget *parent) : QMainWindow(parent)
 {
     setup_ui();
     decoder_ = new video_decoder(this);
 
-    // 注册智能指针类型
-    qRegisterMetaType<VideoFramePtr>("VideoFramePtr");
-
-    connect(decoder_, &video_decoder::frame_ready, this, &main_window::on_frame_ready);
+    render_timer_ = new QTimer(this);
+    render_timer_->setInterval(5);
+    connect(render_timer_, &QTimer::timeout, this, &main_window::on_timer_tick);
 }
 
 main_window::~main_window()
 {
+    render_timer_->stop();
     if (decoder_ != nullptr)
     {
         decoder_->stop();
-        decoder_->wait();
     }
 }
 
 void main_window::setup_ui()
 {
-    setWindowTitle("VideoPlayer");
+    setWindowTitle("VideoPlayer Pro");
     resize(800, 600);
 
     QMenu *fileMenu = menuBar()->addMenu(tr("File"));
@@ -56,6 +56,39 @@ void main_window::on_open_action_triggered()
     {
         QMessageBox::critical(this, tr("Error"), tr("Could not open video file!"));
     }
+    else
+    {
+        render_timer_->start();
+    }
 }
 
-void main_window::on_frame_ready(VideoFramePtr frame) { video_widget_->update_frame(frame); }
+void main_window::on_timer_tick()
+{
+    double master_clock = decoder_->get_master_clock();
+    if (std::isnan(master_clock))
+    {
+        return;
+    }
+
+    VideoFramePtr frame = decoder_->get_video_frame();
+    if (!frame)
+    {
+        return;
+    }
+
+    double diff = frame->pts - master_clock;
+    double sync_threshold = 0.03;
+
+    if (diff <= sync_threshold)
+    {
+        if (diff < -0.2)
+        {
+            decoder_->pop_video_frame();
+        }
+        else
+        {
+            video_widget_->update_frame(frame);
+            decoder_->pop_video_frame();
+        }
+    }
+}

@@ -1,5 +1,7 @@
-#include <cstddef>
-#include <thread>
+#include "log.h"
+#include "scoped_exit.h"
+#include "audio_output.h"
+#include "video_decoder.h"
 
 extern "C"
 {
@@ -7,59 +9,56 @@ extern "C"
 #include <libavcodec/avcodec.h>
 #include <libswresample/swresample.h>
 #include <libavutil/imgutils.h>
-#include <libavutil/opt.h>
-#include <libavutil/channel_layout.h>
 #include <libavutil/time.h>
 }
 
-#include "log.h"
-#include "scoped_exit.h"
-#include "audio_output.h"
-#include "video_decoder.h"
+video_decoder::video_decoder(QObject *parent) : QObject(parent) { audio_out_ = std::make_unique<audio_output>(); }
 
-static double get_sys_time_sec() { return static_cast<double>(av_gettime_relative()) / 1000000.0; }
-
-video_decoder::video_decoder(QObject *parent) : QThread(parent), stop_(false) { audio_out_ = std::make_unique<audio_output>(); }
-
-video_decoder::~video_decoder()
-{
-    stop();
-    wait();
-}
+video_decoder::~video_decoder() { stop(); }
 
 bool video_decoder::open(const QString &file_path)
 {
     stop();
     file_ = file_path;
     stop_ = false;
-    start();
+
+    video_packet_queue_.start();
+    audio_packet_queue_.start();
+    video_frame_queue_.start();
+
+    demux_thread_ = std::thread(&video_decoder::demux_thread_func, this);
     return true;
 }
 
 void video_decoder::stop()
 {
     stop_ = true;
+
+    video_packet_queue_.abort();
+    audio_packet_queue_.abort();
+    video_frame_queue_.abort();
+
+    if (demux_thread_.joinable())
+    {
+        demux_thread_.join();
+    }
+    if (video_thread_.joinable())
+    {
+        video_thread_.join();
+    }
+    if (audio_thread_.joinable())
+    {
+        audio_thread_.join();
+    }
+
     audio_out_->stop();
+    free_resources();
 }
 
-void video_decoder::run()
+void video_decoder::demux_thread_func()
 {
     AVFormatContext *fmt_ctx = nullptr;
-    AVFrame *frame = nullptr;
     AVPacket *pkt = nullptr;
-
-    DEFER({
-        free_resources();
-        if (frame)
-            av_frame_free(&frame);
-        if (pkt)
-            av_packet_free(&pkt);
-        if (fmt_ctx)
-            avformat_close_input(&fmt_ctx);
-        LOG_INFO("Decoder thread finished.");
-    });
-
-    LOG_INFO("Opening file: {}", file_.toStdString());
 
     if (avformat_open_input(&fmt_ctx, file_.toStdString().c_str(), nullptr, nullptr) != 0)
     {
@@ -70,62 +69,136 @@ void video_decoder::run()
     if (avformat_find_stream_info(fmt_ctx, nullptr) < 0)
     {
         LOG_ERROR("Failed to find stream info");
+        avformat_close_input(&fmt_ctx);
         return;
     }
 
-    if (!init_video_decoder(fmt_ctx))
+    if (init_video_decoder(fmt_ctx))
     {
-        LOG_ERROR("Failed to init video decoder");
-        return;
+        video_thread_ = std::thread(&video_decoder::video_thread_func, this);
     }
 
-    init_audio_decoder(fmt_ctx);
-
-    if (audio_index_ == -1)
+    if (init_audio_decoder(fmt_ctx))
     {
-        video_start_system_time_ = av_gettime_relative();
-        LOG_INFO("No audio stream found, using system clock.");
+        audio_thread_ = std::thread(&video_decoder::audio_thread_func, this);
     }
 
-    frame = av_frame_alloc();
     pkt = av_packet_alloc();
-
-    LOG_INFO("Start decoding loop...");
 
     while (!stop_)
     {
-        if (audio_index_ != -1)
+        if (video_packet_queue_.size() > 15 * 1024 * 1024 || audio_packet_queue_.size() > 5 * 1024 * 1024)
         {
-            double duration = audio_out_->get_buffer_duration();
-
-            if (duration > 0.5)
-            {
-                QThread::msleep(10);
-                continue;
-            }
-        }
-
-        if (av_read_frame(fmt_ctx, pkt) < 0)
-        {
-            LOG_INFO("EOF or Read Error. Looping...");
-            if (audio_index_ == -1)
-            {
-                video_start_system_time_ = av_gettime_relative();
-            }
-            av_seek_frame(fmt_ctx, -1, 0, AVSEEK_FLAG_BACKWARD);
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
-        DEFER(av_packet_unref(pkt));
+
+        int ret = av_read_frame(fmt_ctx, pkt);
+        if (ret < 0)
+        {
+            if (ret == AVERROR_EOF)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                continue;
+            }
+            break;
+        }
 
         if (pkt->stream_index == video_index_)
         {
-            process_video_packet(pkt, frame);
+            AVPacket *clone = av_packet_clone(pkt);
+            video_packet_queue_.push(clone);
         }
         else if (pkt->stream_index == audio_index_)
         {
-            process_audio_packet(pkt, frame);
+            AVPacket *clone = av_packet_clone(pkt);
+            audio_packet_queue_.push(clone);
+        }
+
+        av_packet_unref(pkt);
+    }
+
+    av_packet_free(&pkt);
+    avformat_close_input(&fmt_ctx);
+}
+
+void video_decoder::video_thread_func()
+{
+    AVFrame *frame = av_frame_alloc();
+
+    while (!stop_)
+    {
+        AVPacket *pkt = video_packet_queue_.pop();
+        if (pkt == nullptr)
+        {
+            break;
+        }
+
+        DEFER(av_packet_free(&pkt));
+
+        if (avcodec_send_packet(video_ctx_, pkt) < 0)
+        {
+            continue;
+        }
+
+        while (avcodec_receive_frame(video_ctx_, frame) == 0)
+        {
+            double pts = static_cast<double>(frame->best_effort_timestamp) * av_q2d(video_stream_->time_base);
+            double duration = static_cast<double>(frame->duration) * av_q2d(video_stream_->time_base);
+
+            auto vframe = video_frame::make(frame, pts, duration);
+            video_frame_queue_.push(vframe);
         }
     }
+
+    av_frame_free(&frame);
+}
+
+void video_decoder::audio_thread_func()
+{
+    AVFrame *frame = av_frame_alloc();
+
+    while (!stop_)
+    {
+        AVPacket *pkt = audio_packet_queue_.pop();
+        if (pkt == nullptr)
+        {
+            break;
+        }
+
+        DEFER(av_packet_free(&pkt));
+
+        if (avcodec_send_packet(audio_ctx_, pkt) < 0)
+        {
+            continue;
+        }
+
+        while (avcodec_receive_frame(audio_ctx_, frame) == 0)
+        {
+            int out_samples = (44100 * frame->nb_samples / audio_ctx_->sample_rate) + 256;
+            int out_bytes = av_samples_get_buffer_size(nullptr, 2, out_samples, AV_SAMPLE_FMT_S16, 1);
+
+            static std::vector<uint8_t> pcm_buffer;
+            if (pcm_buffer.capacity() < static_cast<size_t>(out_bytes))
+            {
+                pcm_buffer.reserve(static_cast<size_t>(out_bytes) * 2);
+            }
+            pcm_buffer.resize(static_cast<size_t>(out_bytes));
+
+            uint8_t *out_data[1] = {pcm_buffer.data()};
+            int converted_samples = swr_convert(swr_ctx_, out_data, out_samples, (const uint8_t **)frame->data, frame->nb_samples);
+
+            if (converted_samples > 0)
+            {
+                size_t actual_size = static_cast<size_t>(converted_samples) * 2 * 2;
+                double pts = static_cast<double>(frame->pts) * av_q2d(audio_stream_->time_base);
+                audio_out_->set_clock_at(pts, 0);
+                audio_out_->write(pcm_buffer.data(), actual_size);
+            }
+        }
+    }
+
+    av_frame_free(&frame);
 }
 
 bool video_decoder::init_video_decoder(AVFormatContext *fmt_ctx)
@@ -179,157 +252,17 @@ bool video_decoder::init_audio_decoder(AVFormatContext *fmt_ctx)
     }
 
     AVChannelLayout out_layout = AV_CHANNEL_LAYOUT_STEREO;
-    swr_ctx_ = nullptr;
     swr_alloc_set_opts2(&swr_ctx_, &out_layout, AV_SAMPLE_FMT_S16, 44100, &in_layout, audio_ctx_->sample_fmt, audio_ctx_->sample_rate, 0, nullptr);
     swr_init(swr_ctx_);
 
     return audio_out_->start(44100, 2);
 }
 
-double video_decoder::get_master_clock()
-{
-    if (audio_index_ != -1)
-    {
-        return audio_out_->get_current_time();
-    }
-    return get_sys_time_sec() - (static_cast<double>(video_start_system_time_) / 1000000.0);
-}
+VideoFramePtr video_decoder::get_video_frame() { return video_frame_queue_.peek(); }
 
-void video_decoder::process_video_packet(AVPacket *pkt, AVFrame *frame)
-{
-    int ret = avcodec_send_packet(video_ctx_, pkt);
-    if (ret < 0)
-    {
-        LOG_ERROR("Video send packet error: {}", ret);
-        return;
-    }
+void video_decoder::pop_video_frame() { video_frame_queue_.pop(); }
 
-    while (avcodec_receive_frame(video_ctx_, frame) == 0)
-    {
-        double pts = 0;
-        if (frame->pts != AV_NOPTS_VALUE)
-        {
-            pts = static_cast<double>(frame->pts) * av_q2d(video_stream_->time_base);
-        }
-        else
-        {
-            pts = static_cast<double>(frame->best_effort_timestamp) * av_q2d(video_stream_->time_base);
-        }
-
-        double master_time = get_master_clock();
-        double diff = pts - master_time;
-
-        if (diff < -0.06)
-        {
-            LOG_WARN("[Drop Frame] PTS: {:.3f} Master: {:.3f} Diff: {:.3f}", pts, master_time, diff);
-            continue;
-        }
-
-        synchronize_video(pts);
-
-        if (stop_)
-        {
-            break;
-        }
-
-        auto vframe = std::make_shared<video_frame>();
-        vframe->width = frame->width;
-        vframe->height = frame->height;
-        vframe->pts = pts;
-
-        auto y_size = static_cast<size_t>(frame->width) * static_cast<size_t>(frame->height);
-        size_t uv_size = y_size / 4;
-
-        vframe->y_data.resize(y_size);
-        vframe->u_data.resize(uv_size);
-        vframe->v_data.resize(uv_size);
-        vframe->y_line_size = frame->width;
-        vframe->u_line_size = frame->width / 2;
-        vframe->v_line_size = frame->width / 2;
-
-        for (int i = 0; i < frame->height; ++i)
-        {
-            memcpy(vframe->y_data.data() + static_cast<ptrdiff_t>(i * vframe->y_line_size),
-                   frame->data[0] + static_cast<ptrdiff_t>(i * frame->linesize[0]),
-                   static_cast<size_t>(vframe->y_line_size));
-        }
-        for (int i = 0; i < frame->height / 2; ++i)
-        {
-            memcpy(vframe->u_data.data() + static_cast<ptrdiff_t>(i * vframe->u_line_size),
-                   frame->data[1] + static_cast<ptrdiff_t>(i * frame->linesize[1]),
-                   static_cast<size_t>(vframe->u_line_size));
-        }
-        for (int i = 0; i < frame->height / 2; ++i)
-        {
-            memcpy(vframe->v_data.data() + static_cast<ptrdiff_t>(i * vframe->v_line_size),
-                   frame->data[2] + static_cast<ptrdiff_t>(i * frame->linesize[2]),
-                   static_cast<size_t>(vframe->v_line_size));
-        }
-
-        emit frame_ready(vframe);
-    }
-}
-
-void video_decoder::process_audio_packet(AVPacket *pkt, AVFrame *frame)
-{
-    int ret = avcodec_send_packet(audio_ctx_, pkt);
-    if (ret < 0)
-    {
-        return;
-    }
-
-    while (avcodec_receive_frame(audio_ctx_, frame) == 0)
-    {
-        int out_samples = (44100 * frame->nb_samples / audio_ctx_->sample_rate) + 256;
-        int out_bytes = av_samples_get_buffer_size(nullptr, 2, out_samples, AV_SAMPLE_FMT_S16, 1);
-
-        std::vector<uint8_t> pcm_buffer(static_cast<size_t>(out_bytes));
-        uint8_t *out_data[1] = {pcm_buffer.data()};
-
-        int converted_samples = swr_convert(swr_ctx_, out_data, out_samples, frame->data, frame->nb_samples);
-
-        if (converted_samples > 0)
-        {
-            size_t actual_size = static_cast<size_t>(converted_samples) * 2 * 2;
-            pcm_buffer.resize(actual_size);
-
-            double pts = 0;
-            if (frame->pts != AV_NOPTS_VALUE)
-            {
-                pts = static_cast<double>(frame->pts) * av_q2d(audio_stream_->time_base);
-            }
-
-            audio_out_->write(pcm_buffer, pts);
-        }
-    }
-}
-
-void video_decoder::synchronize_video(double pts)
-{
-    constexpr double kSyncThreshold = 0.01;
-
-    while (!stop_)
-    {
-        double current_time = get_master_clock();
-        double diff = pts - current_time;
-
-        if (diff < kSyncThreshold)
-        {
-            break;
-        }
-
-        LOG_TRACE("Sync wait. PTS: {:.3f} Master: {:.3f} Diff: {:.3f}", pts, current_time, diff);
-
-        if (diff > 0.010)
-        {
-            av_usleep(2000);
-        }
-        else
-        {
-            std::this_thread::yield();
-        }
-    }
-}
+double video_decoder::get_master_clock() { return audio_out_->get_current_time(); }
 
 void video_decoder::free_resources()
 {

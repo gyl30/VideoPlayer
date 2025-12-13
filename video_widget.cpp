@@ -1,8 +1,7 @@
-#include <memory>
+#include "video_widget.h"
 #include <QOpenGLTexture>
 #include <QOpenGLPixelTransferOptions>
 #include <utility>
-#include "video_widget.h"
 
 static const char *kVertexShaderSource = R"(
     attribute highp vec4 vertex_in;
@@ -89,9 +88,13 @@ void video_widget::paintGL()
     {
         return;
     }
-    if (!texture_alloced_ || tex_y_->width() != current_frame_->width || tex_y_->height() != current_frame_->height)
+
+    int width = current_frame_->av_frame->width;
+    int height = current_frame_->av_frame->height;
+
+    if (!texture_alloced_ || tex_y_->width() != width || tex_y_->height() != height)
     {
-        init_textures(current_frame_->width, current_frame_->height);
+        init_textures(width, height);
     }
 
     if (!texture_alloced_)
@@ -102,9 +105,14 @@ void video_widget::paintGL()
     QOpenGLPixelTransferOptions options;
     options.setAlignment(1);
 
-    tex_y_->setData(QOpenGLTexture::Red, QOpenGLTexture::UInt8, current_frame_->y_data.data(), &options);
-    tex_u_->setData(QOpenGLTexture::Red, QOpenGLTexture::UInt8, current_frame_->u_data.data(), &options);
-    tex_v_->setData(QOpenGLTexture::Red, QOpenGLTexture::UInt8, current_frame_->v_data.data(), &options);
+    options.setRowLength(current_frame_->av_frame->linesize[0]);
+    tex_y_->setData(QOpenGLTexture::Red, QOpenGLTexture::UInt8, current_frame_->av_frame->data[0], &options);
+
+    options.setRowLength(current_frame_->av_frame->linesize[1]);
+    tex_u_->setData(QOpenGLTexture::Red, QOpenGLTexture::UInt8, current_frame_->av_frame->data[1], &options);
+
+    options.setRowLength(current_frame_->av_frame->linesize[2]);
+    tex_v_->setData(QOpenGLTexture::Red, QOpenGLTexture::UInt8, current_frame_->av_frame->data[2], &options);
 
     program_->bind();
     vbo_.bind();

@@ -17,7 +17,6 @@ class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
     ~video_widget() override;
 
    public slots:
-
     void update_frame(VideoFramePtr frame);
 
    protected:
