@@ -17,7 +17,8 @@ class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
     ~video_widget() override;
 
    public slots:
-    void update_frame(const video_frame &frame);
+
+    void update_frame(VideoFramePtr frame);
 
    protected:
     void initializeGL() override;
@@ -28,7 +29,7 @@ class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
     void init_shader();
     void init_textures(int width, int height);
 
-    video_frame current_frame_;
+    VideoFramePtr current_frame_;
     bool texture_alloced_ = false;
 
     std::unique_ptr<QOpenGLShaderProgram> program_;

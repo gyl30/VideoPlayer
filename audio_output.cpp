@@ -1,5 +1,11 @@
-#include "audio_output.h"
 #include <SDL2/SDL.h>
+#include "log.h"
+#include "audio_output.h"
+
+extern "C"
+{
+#include <libavutil/time.h>
+}
 
 audio_output::audio_output() { SDL_Init(SDL_INIT_AUDIO); }
 
@@ -13,6 +19,11 @@ bool audio_output::start(int sample_rate, int channels)
 {
     stop();
 
+    LOG_INFO("Audio Output Start: Rate={} Channels={}", sample_rate, channels);
+
+    sample_rate_ = sample_rate;
+    channels_ = channels;
+
     SDL_AudioSpec wanted_spec;
     SDL_zero(wanted_spec);
     wanted_spec.freq = sample_rate;
@@ -24,11 +35,13 @@ bool audio_output::start(int sample_rate, int channels)
 
     if (SDL_OpenAudio(&wanted_spec, nullptr) < 0)
     {
+        LOG_ERROR("SDL_OpenAudio failed: {}", SDL_GetError());
         return false;
     }
 
     SDL_PauseAudio(0);
     is_initialized_ = true;
+    last_update_time_ = av_gettime_relative();
     return true;
 }
 
@@ -42,18 +55,48 @@ void audio_output::stop()
 
     std::lock_guard<std::mutex> lock(mutex_);
     buffer_.clear();
+    total_bytes_ = 0;
+    front_cursor_ = 0;
+    audio_clock_ = 0.0;
 }
 
-void audio_output::write(const std::vector<uint8_t> &data)
+void audio_output::write(const std::vector<uint8_t> &data, double pts)
 {
+    if (data.empty())
+    {
+        return;
+    }
+
     std::lock_guard<std::mutex> lock(mutex_);
-    buffer_.push_back(data);
+    buffer_.emplace_back(data, pts);
+    total_bytes_ += data.size();
+
+    static int log_counter = 0;
+    if (++log_counter % 100 == 0)
+    {
+        double duration = static_cast<double>(total_bytes_) / (sample_rate_ * channels_ * bytes_per_sample_);
+        LOG_DEBUG("Audio Buffer Written. Cached Duration: {:.3f}s", duration);
+    }
 }
 
-size_t audio_output::buffer_size()
+double audio_output::get_buffer_duration()
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    return buffer_.size();
+    if (sample_rate_ == 0 || channels_ == 0)
+    {
+        return 0.0;
+    }
+    return static_cast<double>(total_bytes_) / (sample_rate_ * channels_ * bytes_per_sample_);
+}
+
+double audio_output::get_current_time()
+{
+    int64_t current_sys_time = av_gettime_relative();
+    int64_t last_sys_time = last_update_time_.load();
+    double pts = audio_clock_.load();
+
+    double diff_sec = static_cast<double>(current_sys_time - last_sys_time) / 1000000.0;
+    return pts + diff_sec;
 }
 
 void audio_output::sdl_audio_callback(void *userdata, uint8_t *stream, int len)
@@ -64,26 +107,58 @@ void audio_output::sdl_audio_callback(void *userdata, uint8_t *stream, int len)
 
 void audio_output::on_audio_callback(uint8_t *stream, int len)
 {
+    last_update_time_.store(av_gettime_relative());
+
     std::lock_guard<std::mutex> lock(mutex_);
+
     SDL_memset(stream, 0, static_cast<size_t>(len));
+
+    double pts_of_this_chunk = 0.0;
+    bool has_pts = false;
+
+    if (total_bytes_ < static_cast<size_t>(len))
+    {
+        static int underrun_log_counter = 0;
+
+        if (underrun_log_counter++ % 50 == 0)
+        {
+            LOG_WARN("[Audio Underrun] Need: {} bytes, Have: {} bytes. (This causes crackling)", len, total_bytes_.load());
+        }
+    }
 
     while (len > 0 && !buffer_.empty())
     {
-        std::vector<uint8_t> &chunk = buffer_.front();
-        int chunk_size = static_cast<int>(chunk.size());
+        auto &chunk_pair = buffer_.front();
+        std::vector<uint8_t> &chunk = chunk_pair.first;
 
-        if (chunk_size > len)
+        size_t available = chunk.size() - front_cursor_;
+
+        if (!has_pts)
         {
-            SDL_MixAudio(stream, chunk.data(), static_cast<uint32_t>(len), SDL_MIX_MAXVOLUME);
-            chunk.erase(chunk.begin(), chunk.begin() + len);
+            pts_of_this_chunk = chunk_pair.second;
+            has_pts = true;
+        }
+
+        if (available > static_cast<size_t>(len))
+        {
+            SDL_MixAudio(stream, chunk.data() + front_cursor_, static_cast<Uint32>(len), SDL_MIX_MAXVOLUME);
+
+            front_cursor_ += static_cast<size_t>(len);
+            total_bytes_ -= static_cast<size_t>(len);
+            audio_clock_ = pts_of_this_chunk;
             len = 0;
         }
         else
         {
-            SDL_MixAudio(stream, chunk.data(), static_cast<uint32_t>(chunk_size), SDL_MIX_MAXVOLUME);
-            len -= chunk_size;
-            stream += chunk_size;
+            SDL_MixAudio(stream, chunk.data() + front_cursor_, static_cast<Uint32>(available), SDL_MIX_MAXVOLUME);
+
+            len -= static_cast<int>(available);
+            stream += available;
+            total_bytes_ -= available;
+
+            audio_clock_ = chunk_pair.second;
             buffer_.pop_front();
+            front_cursor_ = 0;
         }
     }
 }

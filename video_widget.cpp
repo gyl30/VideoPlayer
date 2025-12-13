@@ -1,6 +1,7 @@
 #include <memory>
 #include <QOpenGLTexture>
 #include <QOpenGLPixelTransferOptions>
+#include <utility>
 #include "video_widget.h"
 
 static const char *kVertexShaderSource = R"(
@@ -44,9 +45,9 @@ video_widget::~video_widget()
     doneCurrent();
 }
 
-void video_widget::update_frame(const video_frame &frame)
+void video_widget::update_frame(VideoFramePtr frame)
 {
-    current_frame_ = frame;
+    current_frame_ = std::move(frame);
     update();
 }
 
@@ -54,7 +55,7 @@ void video_widget::initializeGL()
 {
     initializeOpenGLFunctions();
     glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
- 
+
     init_shader();
 
     static const float kVertices[] = {
@@ -84,15 +85,13 @@ void video_widget::initializeGL()
 void video_widget::paintGL()
 {
     glClear(GL_COLOR_BUFFER_BIT);
-
     if (!is_valid(current_frame_) || !program_)
     {
         return;
     }
-
-    if (!texture_alloced_ || tex_y_->width() != current_frame_.width || tex_y_->height() != current_frame_.height)
+    if (!texture_alloced_ || tex_y_->width() != current_frame_->width || tex_y_->height() != current_frame_->height)
     {
-        init_textures(current_frame_.width, current_frame_.height);
+        init_textures(current_frame_->width, current_frame_->height);
     }
 
     if (!texture_alloced_)
@@ -103,9 +102,9 @@ void video_widget::paintGL()
     QOpenGLPixelTransferOptions options;
     options.setAlignment(1);
 
-    tex_y_->setData(QOpenGLTexture::Red, QOpenGLTexture::UInt8, current_frame_.y_data.data(), &options);
-    tex_u_->setData(QOpenGLTexture::Red, QOpenGLTexture::UInt8, current_frame_.u_data.data(), &options);
-    tex_v_->setData(QOpenGLTexture::Red, QOpenGLTexture::UInt8, current_frame_.v_data.data(), &options);
+    tex_y_->setData(QOpenGLTexture::Red, QOpenGLTexture::UInt8, current_frame_->y_data.data(), &options);
+    tex_u_->setData(QOpenGLTexture::Red, QOpenGLTexture::UInt8, current_frame_->u_data.data(), &options);
+    tex_v_->setData(QOpenGLTexture::Red, QOpenGLTexture::UInt8, current_frame_->v_data.data(), &options);
 
     program_->bind();
     vbo_.bind();

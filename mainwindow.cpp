@@ -10,7 +10,10 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 {
     setup_ui();
     decoder_ = new video_decoder(this);
-    qRegisterMetaType<video_frame>("video_frame");
+
+    // 注册智能指针类型
+    qRegisterMetaType<VideoFramePtr>("VideoFramePtr");
+
     connect(decoder_, &video_decoder::frame_ready, this, &main_window::on_frame_ready);
 }
 
@@ -55,4 +58,4 @@ void main_window::on_open_action_triggered()
     }
 }
 
-void main_window::on_frame_ready(const video_frame &frame) { video_widget_->update_frame(frame); }
+void main_window::on_frame_ready(VideoFramePtr frame) { video_widget_->update_frame(frame); }

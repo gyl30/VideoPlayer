@@ -17,7 +17,8 @@ class main_window : public QMainWindow
 
    private slots:
     void on_open_action_triggered();
-    void on_frame_ready(const video_frame &frame);
+    // 修改：接收智能指针
+    void on_frame_ready(VideoFramePtr frame);
 
    private:
     void setup_ui();
