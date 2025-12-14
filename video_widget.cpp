@@ -1,6 +1,6 @@
 #include "video_widget.h"
 #include <QOpenGLTexture>
-#include <QOpenGLPixelTransferOptions>
+#include <cstddef>
 
 static const char *kVertexShaderSource = R"(
     attribute highp vec4 vertex_in;
@@ -17,24 +17,26 @@ static const char *kFragmentShaderSource = R"(
     uniform sampler2D tex_y;
     uniform sampler2D tex_u;
     uniform sampler2D tex_v;
-    uniform int colorspace;
-
+    uniform int format; 
+    
     void main(void) {
         highp vec3 yuv;
         highp vec3 rgb;
-        yuv.x = texture2D(tex_y, texture_out).r;
-        yuv.y = texture2D(tex_u, texture_out).r - 0.5;
-        yuv.z = texture2D(tex_v, texture_out).r - 0.5;
         
-        if (colorspace == 1) {
-            rgb = mat3(1.0, 1.0, 1.0,
-                       0.0, -0.1873, 1.8556,
-                       1.5748, -0.4681, 0.0) * yuv;
-        } else {
-            rgb = mat3(1.0, 1.0, 1.0,
-                       0.0, -0.39465, 2.03211,
-                       1.13983, -0.58060, 0.0) * yuv;
+        yuv.x = texture2D(tex_y, texture_out).r;
+        
+        if (format == 0) { 
+            yuv.y = texture2D(tex_u, texture_out).r - 0.5;
+            yuv.z = texture2D(tex_v, texture_out).r - 0.5;
+        } else if (format == 1) { 
+            highp vec2 uv = texture2D(tex_u, texture_out).rg;
+            yuv.y = uv.r - 0.5;
+            yuv.z = uv.g - 0.5;
         }
+        
+        rgb = mat3(1.0, 1.0, 1.0,
+                   0.0, -0.344136, 1.772,
+                   1.402, -0.714136, 0.0) * yuv;
         gl_FragColor = vec4(rgb, 1.0);
     }
 )";
@@ -45,18 +47,25 @@ video_widget::~video_widget()
 {
     makeCurrent();
     vbo_.destroy();
-    for (auto &p : pbo_) p.destroy();
-    tex_y_.reset();
-    tex_u_.reset();
-    tex_v_.reset();
+    for (auto &i : pbo_)
+    {
+        for (auto &p : i)
+        {
+            p.destroy();
+        }
+    }
+    for (auto &t : tex_)
+    {
+        t.reset();
+    }
     program_.reset();
     doneCurrent();
 }
 
-void video_widget::update_frame(AVFrame *frame, int colorspace)
+void video_widget::update_frame(AVFrame *frame)
 {
+    std::lock_guard<std::mutex> lock(frame_mutex_);
     current_frame_ = frame;
-    current_colorspace_ = colorspace;
     update();
 }
 
@@ -64,126 +73,139 @@ void video_widget::initializeGL()
 {
     initializeOpenGLFunctions();
     glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
-
     init_shader();
-
-    static const float kVertices[] = {
-        -1.0F,
-        -1.0F,
-        0.0F,
-        1.0F,
-        1.0F,
-        -1.0F,
-        1.0F,
-        1.0F,
-        -1.0F,
-        1.0F,
-        0.0F,
-        0.0F,
-        1.0F,
-        1.0F,
-        1.0F,
-        0.0F,
-    };
-
+    static const float kVertices[] = {-1.0F, -1.0F, 0.0F, 1.0F, 1.0F, -1.0F, 1.0F, 1.0F, -1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F, 0.0F};
     vbo_.create();
     vbo_.bind();
     vbo_.allocate(kVertices, sizeof(kVertices));
-
-    for (int i = 0; i < 3; i++)
+    for (auto &i : pbo_)
     {
-        pbo_[i].create();
+        for (auto &j : i)
+        {
+            j = QOpenGLBuffer(QOpenGLBuffer::PixelUnpackBuffer);
+            j.create();
+        }
     }
 }
 
 void video_widget::paintGL()
 {
+    std::lock_guard<std::mutex> lock(frame_mutex_);
     glClear(GL_COLOR_BUFFER_BIT);
-    if (!current_frame_ || !program_ || current_frame_->width == 0 || current_frame_->height == 0)
+
+    if (current_frame_ == nullptr || !program_ || current_frame_->width == 0)
     {
         return;
     }
 
-    int width = current_frame_->width;
-    int height = current_frame_->height;
-
-    if (!texture_alloced_ || tex_y_->width() != width || tex_y_->height() != height)
+    int fmt_type = 0;
+    if (current_frame_->format == AV_PIX_FMT_NV12)
     {
-        init_textures(width, height);
+        fmt_type = 1;
+    }
+    else if (current_frame_->format != AV_PIX_FMT_YUV420P && current_frame_->format != AV_PIX_FMT_YUVJ420P)
+    {
+        return;
+    }
+
+    if (!texture_alloced_ || tex_width_ != current_frame_->width || tex_height_ != current_frame_->height || tex_format_ != fmt_type)
+    {
+        init_textures(current_frame_->width, current_frame_->height, fmt_type);
     }
 
     if (!texture_alloced_)
+    {
         return;
+    }
 
     upload_texture(current_frame_);
 
     program_->bind();
     vbo_.bind();
-
     program_->enableAttributeArray("vertex_in");
     program_->setAttributeBuffer("vertex_in", GL_FLOAT, 0, 2, 4 * sizeof(float));
-
     program_->enableAttributeArray("texture_in");
     program_->setAttributeBuffer("texture_in", GL_FLOAT, 2 * sizeof(float), 2, 4 * sizeof(float));
 
-    tex_y_->bind(0);
-    tex_u_->bind(1);
-    tex_v_->bind(2);
+    tex_[0]->bind(0);
+    tex_[1]->bind(1);
+    if (fmt_type == 0)
+    {
+        tex_[2]->bind(2);
+    }
 
     program_->setUniformValue("tex_y", 0);
     program_->setUniformValue("tex_u", 1);
     program_->setUniformValue("tex_v", 2);
-    program_->setUniformValue("colorspace", current_colorspace_);
+    program_->setUniformValue("format", fmt_type);
 
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-    tex_v_->release();
-    tex_u_->release();
-    tex_y_->release();
-    vbo_.release();
+    tex_[0]->release();
+    tex_[1]->release();
+    if (fmt_type == 0)
+    {
+        tex_[2]->release();
+    }
     program_->release();
 }
 
 void video_widget::upload_texture(AVFrame *frame)
 {
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    int num_planes = (tex_format_ == 1) ? 2 : 3;
     int widths[3] = {frame->width, frame->width / 2, frame->width / 2};
     int heights[3] = {frame->height, frame->height / 2, frame->height / 2};
-    QOpenGLTexture *textures[3] = {tex_y_.get(), tex_u_.get(), tex_v_.get()};
 
-    for (int i = 0; i < 3; i++)
+    if (tex_format_ == 1)
     {
-        int size = widths[i] * heights[i];
-        pbo_[i].bind();
-        if (pbo_[i].size() != size)
+        widths[1] = frame->width;
+        heights[1] = frame->height / 2;
+    }
+
+    for (int i = 0; i < num_planes; i++)
+    {
+        int size = heights[i] * frame->linesize[i];
+        if (tex_format_ == 1 && i == 1)
         {
-            pbo_[i].allocate(size);
+            size = heights[i] * frame->linesize[1];
         }
 
-        uint8_t *ptr = (uint8_t *)pbo_[i].map(QOpenGLBuffer::WriteOnly);
-        if (ptr)
+        pbo_[pbo_index_][i].bind();
+        if (pbo_[pbo_index_][i].size() < size)
         {
-            uint8_t *src = frame->data[i];
-            int linesize = frame->linesize[i];
+            pbo_[pbo_index_][i].allocate(size);
+        }
 
-            if (linesize == widths[i])
+        auto *ptr = static_cast<uint8_t *>(pbo_[pbo_index_][i].map(QOpenGLBuffer::WriteOnly));
+        if (ptr != nullptr)
+        {
+            if (tex_format_ == 1 && i == 1)
             {
-                std::memcpy(ptr, src, size);
+                std::memcpy(ptr, frame->data[1], static_cast<size_t>(size));
             }
             else
             {
-                for (int h = 0; h < heights[i]; h++)
-                {
-                    std::memcpy(ptr + h * widths[i], src + h * linesize, widths[i]);
-                }
+                std::memcpy(ptr, frame->data[i], static_cast<size_t>(size));
             }
-            pbo_[i].unmap();
+            pbo_[pbo_index_][i].unmap();
         }
 
-        textures[i]->bind();
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo_[i].bufferId());
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, widths[i], heights[i], GL_RED, GL_UNSIGNED_BYTE, nullptr);
-        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        tex_[i]->bind();
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, frame->linesize[i]);
+        if (tex_format_ == 1 && i == 1)
+        {
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, frame->linesize[1] / 2);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, widths[i], heights[i], GL_RG, GL_UNSIGNED_BYTE, nullptr);
+        }
+        else
+        {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, widths[i], heights[i], GL_RED, GL_UNSIGNED_BYTE, nullptr);
+        }
+        pbo_[pbo_index_][i].release();
     }
+    pbo_index_ = (pbo_index_ + 1) % 2;
 }
 
 void video_widget::resizeGL(int w, int h) { glViewport(0, 0, w, h); }
@@ -196,32 +218,38 @@ void video_widget::init_shader()
     program_->link();
 }
 
-void video_widget::init_textures(int width, int height)
+void video_widget::init_textures(int width, int height, int format)
 {
-    tex_y_ = std::make_unique<QOpenGLTexture>(QOpenGLTexture::Target2D);
-    tex_u_ = std::make_unique<QOpenGLTexture>(QOpenGLTexture::Target2D);
-    tex_v_ = std::make_unique<QOpenGLTexture>(QOpenGLTexture::Target2D);
+    for (auto &t : tex_)
+    {
+        t.reset();
+    }
 
-    tex_y_->setSize(width, height);
-    tex_y_->setFormat(QOpenGLTexture::R8_UNorm);
-    tex_y_->allocateStorage(QOpenGLTexture::Red, QOpenGLTexture::UInt8);
-    tex_y_->setMinificationFilter(QOpenGLTexture::Linear);
-    tex_y_->setMagnificationFilter(QOpenGLTexture::Linear);
-    tex_y_->setWrapMode(QOpenGLTexture::ClampToEdge);
+    tex_width_ = width;
+    tex_height_ = height;
+    tex_format_ = format;
 
-    tex_u_->setSize(width / 2, height / 2);
-    tex_u_->setFormat(QOpenGLTexture::R8_UNorm);
-    tex_u_->allocateStorage(QOpenGLTexture::Red, QOpenGLTexture::UInt8);
-    tex_u_->setMinificationFilter(QOpenGLTexture::Linear);
-    tex_u_->setMagnificationFilter(QOpenGLTexture::Linear);
-    tex_u_->setWrapMode(QOpenGLTexture::ClampToEdge);
+    auto create_tex = [&](int idx, int w, int h, QOpenGLTexture::TextureFormat internal_fmt, QOpenGLTexture::PixelFormat pixel_fmt)
+    {
+        tex_[idx] = std::make_unique<QOpenGLTexture>(QOpenGLTexture::Target2D);
+        tex_[idx]->setSize(w, h);
+        tex_[idx]->setFormat(internal_fmt);
+        tex_[idx]->allocateStorage(pixel_fmt, QOpenGLTexture::UInt8);
+        tex_[idx]->setMinMagFilters(QOpenGLTexture::Linear, QOpenGLTexture::Linear);
+        tex_[idx]->setWrapMode(QOpenGLTexture::ClampToEdge);
+    };
 
-    tex_v_->setSize(width / 2, height / 2);
-    tex_v_->setFormat(QOpenGLTexture::R8_UNorm);
-    tex_v_->allocateStorage(QOpenGLTexture::Red, QOpenGLTexture::UInt8);
-    tex_v_->setMinificationFilter(QOpenGLTexture::Linear);
-    tex_v_->setMagnificationFilter(QOpenGLTexture::Linear);
-    tex_v_->setWrapMode(QOpenGLTexture::ClampToEdge);
+    if (format == 0)
+    {
+        create_tex(0, width, height, QOpenGLTexture::R8_UNorm, QOpenGLTexture::Red);
+        create_tex(1, width / 2, height / 2, QOpenGLTexture::R8_UNorm, QOpenGLTexture::Red);
+        create_tex(2, width / 2, height / 2, QOpenGLTexture::R8_UNorm, QOpenGLTexture::Red);
+    }
+    else if (format == 1)
+    {
+        create_tex(0, width, height, QOpenGLTexture::R8_UNorm, QOpenGLTexture::Red);
+        create_tex(1, width / 2, height / 2, QOpenGLTexture::RG8_UNorm, QOpenGLTexture::RG);
+    }
 
     texture_alloced_ = true;
 }

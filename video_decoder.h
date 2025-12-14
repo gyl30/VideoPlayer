@@ -34,10 +34,14 @@ class video_decoder : public QObject
    public:
     bool open(const QString &file_path);
     void stop();
+
     void seek(double pos);
+
     double get_duration() const;
     double get_master_clock();
     double get_frame_rate() const;
+
+    bool is_stopping() const { return abort_request_; }
 
     int current_hw_pix_fmt() const { return hw_pix_fmt_; }
 
@@ -59,9 +63,15 @@ class video_decoder : public QObject
 
     void notify_packet_consumed();
 
+    static int decode_interrupt_cb(void *ctx);
+
    private:
     QString file_;
-    std::atomic<bool> stop_{false};
+
+    std::atomic<bool> abort_request_{false};
+
+    std::atomic<bool> seek_req_{false};
+    std::atomic<double> seek_pos_{0.0};
 
     std::thread demux_thread_;
     std::thread video_thread_;
@@ -95,6 +105,16 @@ class video_decoder : public QObject
 
     int audio_buf_index_ = 0;
     double audio_current_pts_ = 0;
+
+    int video_ctx_serial_ = -1;
+    int audio_ctx_serial_ = -1;
+
+    struct
+    {
+        int sample_rate = 0;
+        int channels = 0;
+        int format = -1;
+    } last_audio_params_;
 };
 
 #endif

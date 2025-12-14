@@ -2,6 +2,8 @@
 #define AV_CLOCK_H
 
 #include <cmath>
+#include <mutex>
+#include <atomic>
 
 extern "C"
 {
@@ -11,12 +13,13 @@ extern "C"
 class av_clock
 {
    public:
-    void init(int *queue_serial)
+    void init(std::atomic<int> *queue_serial)
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         speed_ = 1.0;
         paused_ = false;
         queue_serial_ = queue_serial;
-        set(NAN, -1);
+        set_internal(NAN, -1, 0);
     }
 
     void set(double pts, int serial)
@@ -27,15 +30,14 @@ class av_clock
 
     void set_at(double pts, int serial, double time)
     {
-        pts_ = pts;
-        last_updated_ = time;
-        pts_drift_ = pts_ - time;
-        serial_ = serial;
+        std::lock_guard<std::mutex> lock(mutex_);
+        set_internal(pts, serial, time);
     }
 
     [[nodiscard]] double get() const
     {
-        if (*queue_serial_ != serial_)
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (queue_serial_ == nullptr || *queue_serial_ != serial_)
         {
             return NAN;
         }
@@ -49,6 +51,7 @@ class av_clock
 
     void set_paused(bool paused)
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         if (paused_ == paused)
         {
             return;
@@ -56,7 +59,7 @@ class av_clock
         double time = static_cast<double>(av_gettime_relative()) / 1000000.0;
         if (paused)
         {
-            pts_ = get();
+            pts_ = pts_drift_ + time - ((time - last_updated_) * (1.0 - speed_));
         }
         else
         {
@@ -66,7 +69,20 @@ class av_clock
         paused_ = paused;
     }
 
-    [[nodiscard]] int serial() const { return serial_; }
+    [[nodiscard]] int serial() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return serial_;
+    }
+
+   private:
+    void set_internal(double pts, int serial, double time)
+    {
+        pts_ = pts;
+        last_updated_ = time;
+        pts_drift_ = pts_ - time;
+        serial_ = serial;
+    }
 
    private:
     double pts_ = NAN;
@@ -75,7 +91,8 @@ class av_clock
     double speed_ = 1.0;
     int serial_ = -1;
     bool paused_ = false;
-    int *queue_serial_ = nullptr;
+    std::atomic<int> *queue_serial_ = nullptr;
+    mutable std::mutex mutex_;
 };
 
 #endif

@@ -20,7 +20,11 @@ struct PacketData
 class packet_queue
 {
    public:
-    packet_queue() { abort_request_ = 1; }
+    packet_queue()
+    {
+        abort_request_ = 1;
+        serial_ = 0;
+    }
 
     ~packet_queue() { flush(); }
 
@@ -60,13 +64,15 @@ class packet_queue
     int put(AVPacket *pkt)
     {
         AVPacket *pkt_ref = av_packet_alloc();
-        if (!pkt_ref)
+        if (pkt_ref == nullptr)
+        {
             return -1;
+        }
 
         av_packet_move_ref(pkt_ref, pkt);
 
         std::lock_guard<std::mutex> lock(mutex_);
-        if (abort_request_)
+        if (abort_request_ != 0)
         {
             av_packet_free(&pkt_ref);
             return -1;
@@ -88,8 +94,10 @@ class packet_queue
         std::unique_lock<std::mutex> lock(mutex_);
         while (true)
         {
-            if (abort_request_)
+            if (abort_request_ != 0)
+            {
                 return -1;
+            }
 
             if (!queue_.empty())
             {
@@ -99,25 +107,33 @@ class packet_queue
                 duration_ -= data.pkt->duration;
 
                 av_packet_move_ref(pkt, data.pkt);
-                if (serial)
+                if (serial != nullptr)
+                {
                     *serial = data.serial;
+                }
                 av_packet_free(&data.pkt);
                 return 1;
             }
 
             if (!block)
+            {
                 return 0;
+            }
             cond_.wait(lock);
         }
     }
 
-    int serial()
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return serial_;
-    }
+    int serial() const { return serial_; }
+
+    std::atomic<int> &serial_ref() { return serial_; }
 
     int size() const { return size_; }
+
+    int64_t duration() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return duration_;
+    }
 
     int count()
     {
@@ -127,10 +143,10 @@ class packet_queue
 
    private:
     std::queue<PacketData> queue_;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::condition_variable cond_;
     std::atomic<int> abort_request_{1};
-    int serial_ = 0;
+    std::atomic<int> serial_{0};
     int size_ = 0;
     int64_t duration_ = 0;
 };

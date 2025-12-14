@@ -7,6 +7,7 @@
 #include <QOpenGLTexture>
 #include <QOpenGLBuffer>
 #include <memory>
+#include <mutex>
 
 extern "C"
 {
@@ -21,7 +22,7 @@ class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
     ~video_widget() override;
 
    public slots:
-    void update_frame(AVFrame* frame, int colorspace = 0);
+    void update_frame(AVFrame* frame);
 
    protected:
     void initializeGL() override;
@@ -30,19 +31,24 @@ class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
 
    private:
     void init_shader();
-    void init_textures(int width, int height);
+    void init_textures(int width, int height, int format);
     void upload_texture(AVFrame* frame);
 
+   private:
     AVFrame* current_frame_ = nullptr;
-    int current_colorspace_ = 0;
+    std::mutex frame_mutex_;
+    
     bool texture_alloced_ = false;
+    int tex_width_ = 0;
+    int tex_height_ = 0;
+    int tex_format_ = -1;
 
     std::unique_ptr<QOpenGLShaderProgram> program_;
-    std::unique_ptr<QOpenGLTexture> tex_y_;
-    std::unique_ptr<QOpenGLTexture> tex_u_;
-    std::unique_ptr<QOpenGLTexture> tex_v_;
+    std::unique_ptr<QOpenGLTexture> tex_[3]; 
     QOpenGLBuffer vbo_;
-    QOpenGLBuffer pbo_[3];
+
+    QOpenGLBuffer pbo_[2][3];
+    int pbo_index_ = 0;
 };
 
 #endif

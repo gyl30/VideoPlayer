@@ -15,6 +15,12 @@ extern "C"
 #include <algorithm>
 }
 
+int video_decoder::decode_interrupt_cb(void *ctx)
+{
+    auto *decoder = static_cast<video_decoder *>(ctx);
+    return decoder->is_stopping() ? 1 : 0;
+}
+
 static enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts)
 {
     const enum AVPixelFormat *p;
@@ -38,7 +44,10 @@ bool video_decoder::open(const QString &file_path)
 {
     stop();
     file_ = file_path;
-    stop_ = false;
+    abort_request_ = false;
+    seek_req_ = false;
+    video_ctx_serial_ = -1;
+    audio_ctx_serial_ = -1;
 
     video_packet_queue_.start();
     audio_packet_queue_.start();
@@ -46,12 +55,13 @@ bool video_decoder::open(const QString &file_path)
     video_frame_queue_.init(&video_packet_queue_, 3, true);
     video_frame_queue_.start();
 
-    audio_frame_queue_.init(&audio_packet_queue_, 16, false);
+    audio_frame_queue_.init(&audio_packet_queue_, 9, false);
     audio_frame_queue_.start();
 
-    vid_clk_.init(reinterpret_cast<int *>(&video_packet_queue_));
-    aud_clk_.init(reinterpret_cast<int *>(&audio_packet_queue_));
-    ext_clk_.init(reinterpret_cast<int *>(&ext_clk_));
+    vid_clk_.init(&video_packet_queue_.serial_ref());
+    aud_clk_.init(&audio_packet_queue_.serial_ref());
+    static std::atomic<int> ext_gen{0};
+    ext_clk_.init(&ext_gen);
 
     demux_thread_ = std::thread(&video_decoder::demux_thread_func, this);
     return true;
@@ -59,7 +69,7 @@ bool video_decoder::open(const QString &file_path)
 
 void video_decoder::stop()
 {
-    stop_ = true;
+    abort_request_ = true;
 
     video_packet_queue_.abort();
     audio_packet_queue_.abort();
@@ -87,33 +97,8 @@ void video_decoder::stop()
 
 void video_decoder::seek(double pos)
 {
-    if (fmt_ctx_ == nullptr)
-    {
-        return;
-    }
-    auto seek_target = static_cast<int64_t>(pos * AV_TIME_BASE);
-    int64_t seek_min = INT64_MIN;
-    int64_t seek_max = INT64_MAX;
-
-    if (avformat_seek_file(fmt_ctx_, -1, seek_min, seek_target, seek_max, 0) < 0)
-    {
-        LOG_ERROR("Seek failed");
-        return;
-    }
-
-    video_packet_queue_.flush();
-    audio_packet_queue_.flush();
-
-    if (video_ctx_ != nullptr)
-    {
-        avcodec_flush_buffers(video_ctx_);
-    }
-    if (audio_ctx_ != nullptr)
-    {
-        avcodec_flush_buffers(audio_ctx_);
-    }
-
-    ext_clk_.set(pos, 0);
+    seek_pos_ = pos;
+    seek_req_ = true;
     notify_packet_consumed();
 }
 
@@ -146,6 +131,16 @@ void video_decoder::demux_thread_func()
     AVPacket *pkt = av_packet_alloc();
     DEFER(av_packet_free(&pkt));
 
+    fmt_ctx_ = avformat_alloc_context();
+    if (fmt_ctx_ == nullptr)
+    {
+        LOG_ERROR("Failed to alloc avformat context");
+        return;
+    }
+
+    fmt_ctx_->interrupt_callback.callback = decode_interrupt_cb;
+    fmt_ctx_->interrupt_callback.opaque = this;
+
     if (avformat_open_input(&fmt_ctx_, file_.toStdString().c_str(), nullptr, nullptr) != 0)
     {
         LOG_ERROR("Failed to open input file");
@@ -168,12 +163,40 @@ void video_decoder::demux_thread_func()
         audio_thread_ = std::thread(&video_decoder::audio_thread_func, this);
     }
 
-    while (!stop_)
+    while (!abort_request_)
     {
-        if (video_packet_queue_.size() > 15 * 1024 * 1024 || audio_packet_queue_.size() > 5 * 1024 * 1024)
+        if (seek_req_)
+        {
+            auto seek_target = static_cast<int64_t>(seek_pos_ * AV_TIME_BASE);
+            if (avformat_seek_file(fmt_ctx_, -1, INT64_MIN, seek_target, INT64_MAX, 0) < 0)
+            {
+                LOG_ERROR("Seek failed");
+            }
+            else
+            {
+                video_packet_queue_.flush();
+                audio_packet_queue_.flush();
+                if (video_index_ >= 0)
+                {
+                    video_packet_queue_.put(pkt);
+                }
+                if (audio_index_ >= 0)
+                {
+                    audio_packet_queue_.put(pkt);
+                }
+                ext_clk_.set(seek_pos_, 0);
+            }
+            seek_req_ = false;
+        }
+
+        bool video_full = (video_index_ != -1) && (video_packet_queue_.size() > 15 * 1024 * 1024 ||
+                                                   (static_cast<double>(video_packet_queue_.duration()) * av_q2d(video_stream_->time_base) > 1.0));
+        bool audio_full = (audio_index_ != -1) && (audio_packet_queue_.size() > 5 * 1024 * 1024 ||
+                                                   (static_cast<double>(audio_packet_queue_.duration()) * av_q2d(audio_stream_->time_base) > 1.0));
+
+        if ((video_full || audio_full) && !abort_request_)
         {
             std::unique_lock<std::mutex> lock(continue_read_mutex_);
-
             continue_read_cv_.wait_for(lock, std::chrono::milliseconds(10));
             continue;
         }
@@ -187,7 +210,11 @@ void video_decoder::demux_thread_func()
                 continue_read_cv_.wait_for(lock, std::chrono::milliseconds(100));
                 continue;
             }
-            break;
+            if (fmt_ctx_->pb != nullptr && fmt_ctx_->pb->error != 0)
+            {
+                break;
+            }
+            continue;
         }
 
         if (pkt->stream_index == video_index_)
@@ -198,7 +225,6 @@ void video_decoder::demux_thread_func()
         {
             audio_packet_queue_.put(pkt);
         }
-
         av_packet_unref(pkt);
     }
 }
@@ -212,7 +238,7 @@ void video_decoder::video_thread_func()
     DEFER(av_frame_free(&frame));
     DEFER(av_frame_free(&sw_frame));
 
-    while (!stop_)
+    while (!abort_request_)
     {
         int serial;
         if (video_packet_queue_.get(pkt, &serial, true) < 0)
@@ -222,10 +248,10 @@ void video_decoder::video_thread_func()
 
         notify_packet_consumed();
 
-        if (serial != video_packet_queue_.serial())
+        if (serial != video_ctx_serial_)
         {
-            av_packet_unref(pkt);
-            continue;
+            avcodec_flush_buffers(video_ctx_);
+            video_ctx_serial_ = serial;
         }
 
         if (avcodec_send_packet(video_ctx_, pkt) < 0)
@@ -275,9 +301,9 @@ void video_decoder::video_thread_func()
             vp->serial = serial;
             vp->pts = (final_frame->pts == AV_NOPTS_VALUE) ? NAN : static_cast<double>(final_frame->pts) * av_q2d(video_stream_->time_base);
             vp->duration = (final_frame->duration == 0) ? 0 : static_cast<double>(final_frame->duration) * av_q2d(video_stream_->time_base);
-            vp->pos = pkt->pos;
             vp->width = final_frame->width;
             vp->height = final_frame->height;
+            vp->format = final_frame->format;
 
             av_frame_move_ref(vp->frame, final_frame);
             video_frame_queue_.push();
@@ -301,7 +327,7 @@ void video_decoder::audio_thread_func()
     DEFER(av_frame_free(&frame));
     DEFER(av_frame_free(&frame_out));
 
-    while (!stop_)
+    while (!abort_request_)
     {
         int serial;
         if (audio_packet_queue_.get(pkt, &serial, true) < 0)
@@ -311,10 +337,10 @@ void video_decoder::audio_thread_func()
 
         notify_packet_consumed();
 
-        if (serial != audio_packet_queue_.serial())
+        if (serial != audio_ctx_serial_)
         {
-            av_packet_unref(pkt);
-            continue;
+            avcodec_flush_buffers(audio_ctx_);
+            audio_ctx_serial_ = serial;
         }
 
         if (avcodec_send_packet(audio_ctx_, pkt) < 0)
@@ -327,8 +353,15 @@ void video_decoder::audio_thread_func()
         while (avcodec_receive_frame(audio_ctx_, frame) == 0)
         {
             AVChannelLayout out_layout = AV_CHANNEL_LAYOUT_STEREO;
-            if (swr_ctx_ == nullptr)
+            bool params_changed = (frame->sample_rate != last_audio_params_.sample_rate) ||
+                                  (frame->ch_layout.nb_channels != last_audio_params_.channels) || (frame->format != last_audio_params_.format);
+
+            if (params_changed || swr_ctx_ == nullptr)
             {
+                if (swr_ctx_ != nullptr)
+                {
+                    swr_free(&swr_ctx_);
+                }
                 AVChannelLayout in_layout = frame->ch_layout;
                 if (AV_CHANNEL_ORDER_UNSPEC == in_layout.order)
                 {
@@ -345,37 +378,34 @@ void video_decoder::audio_thread_func()
                                     0,
                                     nullptr);
                 swr_init(swr_ctx_);
+                last_audio_params_.sample_rate = frame->sample_rate;
+                last_audio_params_.channels = frame->ch_layout.nb_channels;
+                last_audio_params_.format = frame->format;
             }
 
             int out_samples = static_cast<int>(
                 av_rescale_rnd(swr_get_delay(swr_ctx_, frame->sample_rate) + frame->nb_samples, 44100, frame->sample_rate, AV_ROUND_UP));
-
             av_frame_unref(frame_out);
             frame_out->nb_samples = out_samples;
             frame_out->ch_layout = out_layout;
             frame_out->sample_rate = 44100;
             frame_out->format = AV_SAMPLE_FMT_S16;
 
-            if (av_frame_get_buffer(frame_out, 0) < 0)
+            if (av_frame_get_buffer(frame_out, 0) >= 0)
             {
-                av_frame_unref(frame);
-                continue;
-            }
-
-            const auto **in_data = (const uint8_t **)frame->data;
-            int ret = swr_convert(swr_ctx_, frame_out->data, out_samples, in_data, frame->nb_samples);
-
-            if (ret > 0)
-            {
-                frame_out->nb_samples = ret;
-                Frame *af = audio_frame_queue_.peek_writable();
-                if (af != nullptr)
+                int ret = swr_convert(swr_ctx_, frame_out->data, out_samples, (const uint8_t **)frame->data, frame->nb_samples);
+                if (ret > 0)
                 {
-                    af->serial = serial;
-                    af->pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : static_cast<double>(frame->pts) * av_q2d(audio_stream_->time_base);
-                    af->duration = static_cast<double>(frame->nb_samples) / frame->sample_rate;
-                    av_frame_move_ref(af->frame, frame_out);
-                    audio_frame_queue_.push();
+                    frame_out->nb_samples = ret;
+                    Frame *af = audio_frame_queue_.peek_writable();
+                    if (af != nullptr)
+                    {
+                        af->serial = serial;
+                        af->pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : static_cast<double>(frame->pts) * av_q2d(audio_stream_->time_base);
+                        af->duration = static_cast<double>(frame->nb_samples) / frame->sample_rate;
+                        av_frame_move_ref(af->frame, frame_out);
+                        audio_frame_queue_.push();
+                    }
                 }
             }
             av_frame_unref(frame);
@@ -419,7 +449,6 @@ bool video_decoder::open_codec_context(const AVCodec *codec, AVCodecParameters *
     {
         return false;
     }
-
     if (avcodec_parameters_to_context(ctx, par) < 0)
     {
         avcodec_free_context(&ctx);
@@ -427,7 +456,6 @@ bool video_decoder::open_codec_context(const AVCodec *codec, AVCodecParameters *
     }
 
     ctx->opaque = this;
-
     if (try_hw)
     {
         ctx->get_format = get_hw_format;
@@ -455,7 +483,14 @@ bool video_decoder::open_codec_context(const AVCodec *codec, AVCodecParameters *
         return false;
     }
 
-    video_ctx_ = ctx;
+    if (ctx->codec_type == AVMEDIA_TYPE_VIDEO)
+    {
+        video_ctx_ = ctx;
+    }
+    else
+    {
+        audio_ctx_ = ctx;
+    }
     return true;
 }
 
@@ -468,8 +503,7 @@ bool video_decoder::init_video_decoder(AVFormatContext *fmt_ctx)
     }
 
     video_stream_ = fmt_ctx->streams[video_index_];
-    AVCodecParameters *par = video_stream_->codecpar;
-    const AVCodec *codec = avcodec_find_decoder(par->codec_id);
+    const AVCodec *codec = avcodec_find_decoder(video_stream_->codecpar->codec_id);
     if (codec == nullptr)
     {
         return false;
@@ -478,7 +512,7 @@ bool video_decoder::init_video_decoder(AVFormatContext *fmt_ctx)
     bool hw_success = false;
     if (init_hw_decoder(codec))
     {
-        if (open_codec_context(codec, par, true))
+        if (open_codec_context(codec, video_stream_->codecpar, true))
         {
             hw_success = true;
             is_hw_decoding_ = true;
@@ -490,11 +524,9 @@ bool video_decoder::init_video_decoder(AVFormatContext *fmt_ctx)
         if (hw_device_ctx_ != nullptr)
         {
             av_buffer_unref(&hw_device_ctx_);
-            hw_device_ctx_ = nullptr;
         }
         hw_pix_fmt_ = AV_PIX_FMT_NONE;
-
-        if (open_codec_context(codec, par, false))
+        if (open_codec_context(codec, video_stream_->codecpar, false))
         {
             is_hw_decoding_ = false;
         }
@@ -503,7 +535,6 @@ bool video_decoder::init_video_decoder(AVFormatContext *fmt_ctx)
             return false;
         }
     }
-
     return true;
 }
 
@@ -516,16 +547,13 @@ bool video_decoder::init_audio_decoder(AVFormatContext *fmt_ctx)
     }
 
     audio_stream_ = fmt_ctx->streams[audio_index_];
-    AVCodecParameters *par = audio_stream_->codecpar;
-    const AVCodec *codec = avcodec_find_decoder(par->codec_id);
+    const AVCodec *codec = avcodec_find_decoder(audio_stream_->codecpar->codec_id);
     if (codec == nullptr)
     {
         return false;
     }
 
-    audio_ctx_ = avcodec_alloc_context3(codec);
-    avcodec_parameters_to_context(audio_ctx_, par);
-    if (avcodec_open2(audio_ctx_, codec, nullptr) < 0)
+    if (!open_codec_context(codec, audio_stream_->codecpar, false))
     {
         return false;
     }
@@ -535,32 +563,47 @@ bool video_decoder::init_audio_decoder(AVFormatContext *fmt_ctx)
 
 void video_decoder::audio_callback_impl(uint8_t *stream, int len)
 {
-    std::memset(stream, 0, static_cast<size_t>(len));
+    int len1;
+    int audio_size;
+    double audio_callback_time = static_cast<double>(av_gettime_relative()) / 1000000.0;
 
     while (len > 0)
     {
-        Frame *af = audio_frame_queue_.peek_readable();
-        if (af == nullptr)
+        if (abort_request_)
         {
+            std::memset(stream, 0, static_cast<size_t>(len));
             return;
         }
 
-        int bytes_per_sample = 2 * 2;
-        int frame_size = af->frame->nb_samples * bytes_per_sample;
+        Frame *af = audio_frame_queue_.peek_readable();
+        int current_frame_size = (af != nullptr) ? (af->frame->nb_samples * 4) : 0;
 
-        if (audio_buf_index_ >= frame_size)
+        if (af == nullptr || audio_buf_index_ >= current_frame_size)
         {
-            if (!std::isnan(af->pts))
+            if (af != nullptr)
             {
+                if (af->serial != audio_packet_queue_.serial())
+                {
+                    audio_frame_queue_.next();
+                    audio_buf_index_ = 0;
+                    continue;
+                }
+
                 audio_current_pts_ = af->pts + af->duration;
-                aud_clk_.set_at(audio_current_pts_, af->serial, static_cast<double>(av_gettime_relative()) / 1000000.0);
+                audio_frame_queue_.next();
+                audio_buf_index_ = 0;
             }
-            audio_frame_queue_.next();
-            audio_buf_index_ = 0;
-            continue;
+
+            af = audio_frame_queue_.peek_readable();
+            if (af == nullptr)
+            {
+                std::memset(stream, 0, static_cast<size_t>(len));
+                return;
+            }
         }
 
-        int len1 = frame_size - audio_buf_index_;
+        audio_size = af->frame->nb_samples * 4;
+        len1 = audio_size - audio_buf_index_;
         len1 = std::min(len1, len);
 
         std::memcpy(stream, af->frame->data[0] + audio_buf_index_, static_cast<size_t>(len1));
@@ -571,46 +614,34 @@ void video_decoder::audio_callback_impl(uint8_t *stream, int len)
 
         if (!std::isnan(af->pts))
         {
-            double current_time = af->pts + (static_cast<double>(audio_buf_index_) / static_cast<double>(bytes_per_sample) / 44100.0);
-            aud_clk_.set_at(current_time, af->serial, static_cast<double>(av_gettime_relative()) / 1000000.0);
+            double pts_in_frame = af->pts + (static_cast<double>(audio_buf_index_) / (4 * 44100.0));
+            aud_clk_.set_at(pts_in_frame, af->serial, audio_callback_time);
         }
     }
 }
 
-double video_decoder::get_master_clock()
-{
-    if (audio_out_)
-    {
-        return aud_clk_.get();
-    }
-    return ext_clk_.get();
-}
+double video_decoder::get_master_clock() { return aud_clk_.get(); }
 
 void video_decoder::free_resources()
 {
     if (swr_ctx_ != nullptr)
     {
         swr_free(&swr_ctx_);
-        swr_ctx_ = nullptr;
     }
     if (video_ctx_ != nullptr)
     {
         avcodec_free_context(&video_ctx_);
-        video_ctx_ = nullptr;
     }
     if (audio_ctx_ != nullptr)
     {
         avcodec_free_context(&audio_ctx_);
-        audio_ctx_ = nullptr;
     }
     if (fmt_ctx_ != nullptr)
     {
         avformat_close_input(&fmt_ctx_);
-        fmt_ctx_ = nullptr;
     }
     if (hw_device_ctx_ != nullptr)
     {
         av_buffer_unref(&hw_device_ctx_);
-        hw_device_ctx_ = nullptr;
     }
 }
