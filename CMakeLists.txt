@@ -94,11 +94,8 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGLWidgets OpenGL)
-
 find_package(SDL2 REQUIRED)
-
 find_package(spdlog REQUIRED)
-
 find_package(PkgConfig REQUIRED)
 
 pkg_check_modules(FFMPEG REQUIRED 

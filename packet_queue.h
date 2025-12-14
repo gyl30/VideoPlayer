@@ -3,61 +3,119 @@
 
 #include <queue>
 #include <mutex>
-#include <atomic>
 #include <condition_variable>
+#include <atomic>
 
 extern "C"
 {
 #include <libavcodec/avcodec.h>
 }
 
+struct PacketData
+{
+    AVPacket *pkt;
+    int serial;
+};
+
 class packet_queue
 {
    public:
-    packet_queue() = default;
-    ~packet_queue() { clear(); }
+    packet_queue() { abort_request_ = 1; }
 
-    void push(AVPacket *pkt)
+    ~packet_queue() { flush(); }
+
+    void start()
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        queue_.push(pkt);
-        cond_.notify_one();
-        size_ += pkt->size;
-    }
-
-    AVPacket *pop()
-    {
-        std::unique_lock<std::mutex> lock(mutex_);
-        cond_.wait(lock, [this] { return !queue_.empty() || abort_; });
-        if (abort_ || queue_.empty())
-        {
-            return nullptr;
-        }
-        AVPacket *pkt = queue_.front();
-        queue_.pop();
-        size_ -= pkt->size;
-        return pkt;
-    }
-
-    void clear()
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        while (!queue_.empty())
-        {
-            AVPacket *pkt = queue_.front();
-            queue_.pop();
-            av_packet_free(&pkt);
-        }
-        size_ = 0;
+        abort_request_ = 0;
+        serial_++;
+        duration_ = 0;
+        cond_.notify_all();
     }
 
     void abort()
     {
-        abort_ = true;
+        std::lock_guard<std::mutex> lock(mutex_);
+        abort_request_ = 1;
         cond_.notify_all();
     }
 
-    void start() { abort_ = false; }
+    bool is_aborted() const { return abort_request_ != 0; }
+
+    void flush()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        while (!queue_.empty())
+        {
+            AVPacket *pkt = queue_.front().pkt;
+            av_packet_free(&pkt);
+            queue_.pop();
+        }
+        size_ = 0;
+        duration_ = 0;
+        serial_++;
+        cond_.notify_all();
+    }
+
+    int put(AVPacket *pkt)
+    {
+        AVPacket *pkt_ref = av_packet_alloc();
+        if (!pkt_ref)
+            return -1;
+
+        av_packet_move_ref(pkt_ref, pkt);
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (abort_request_)
+        {
+            av_packet_free(&pkt_ref);
+            return -1;
+        }
+
+        PacketData data;
+        data.pkt = pkt_ref;
+        data.serial = serial_;
+
+        queue_.push(data);
+        size_ += pkt_ref->size;
+        duration_ += pkt_ref->duration;
+        cond_.notify_one();
+        return 0;
+    }
+
+    int get(AVPacket *pkt, int *serial, bool block)
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
+        while (true)
+        {
+            if (abort_request_)
+                return -1;
+
+            if (!queue_.empty())
+            {
+                PacketData data = queue_.front();
+                queue_.pop();
+                size_ -= data.pkt->size;
+                duration_ -= data.pkt->duration;
+
+                av_packet_move_ref(pkt, data.pkt);
+                if (serial)
+                    *serial = data.serial;
+                av_packet_free(&data.pkt);
+                return 1;
+            }
+
+            if (!block)
+                return 0;
+            cond_.wait(lock);
+        }
+    }
+
+    int serial()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return serial_;
+    }
 
     int size() const { return size_; }
 
@@ -68,11 +126,13 @@ class packet_queue
     }
 
    private:
-    std::queue<AVPacket *> queue_;
+    std::queue<PacketData> queue_;
     std::mutex mutex_;
     std::condition_variable cond_;
-    std::atomic<bool> abort_{false};
-    std::atomic<int> size_{0};
+    std::atomic<int> abort_request_{1};
+    int serial_ = 0;
+    int size_ = 0;
+    int64_t duration_ = 0;
 };
 
 #endif

@@ -1,7 +1,6 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <QTimer>
 #include <QMainWindow>
 
 class video_decoder;
@@ -17,15 +16,17 @@ class main_window : public QMainWindow
 
    private slots:
     void on_open_action_triggered();
-    void on_timer_tick();
+    void video_refresh();
 
    private:
     void setup_ui();
+    void schedule_refresh(int delay) const;
 
    private:
     video_decoder *decoder_ = nullptr;
     video_widget *video_widget_ = nullptr;
-    QTimer *render_timer_ = nullptr;
+    double frame_timer_ = 0.0;
+    double prev_frame_delay_ = 0.04;
 };
 
 #endif

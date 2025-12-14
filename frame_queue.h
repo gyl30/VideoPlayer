@@ -1,79 +1,115 @@
 #ifndef FRAME_QUEUE_H
 #define FRAME_QUEUE_H
 
-#include <queue>
+#include <vector>
 #include <mutex>
 #include <condition_variable>
 #include "video_frame.h"
+#include "packet_queue.h"
 
 class frame_queue
 {
    public:
-    void push(const VideoFramePtr& frame)
+    void init(packet_queue *pktq, int max_size, bool keep_last)
     {
-        std::unique_lock<std::mutex> lock(mutex_);
-        cond_full_.wait(lock, [this] { return queue_.size() < max_size_ || abort_; });
-        if (abort_)
-        {
-            return;
-        }
-        queue_.push(frame);
-        cond_empty_.notify_one();
+        pktq_ = pktq;
+        max_size_ = std::min(max_size, 16);
+        keep_last_ = keep_last;
+
+        queue_.resize(max_size_);
     }
 
-    VideoFramePtr pop()
+    void start()
     {
-        std::unique_lock<std::mutex> lock(mutex_);
-        if (queue_.empty())
-        {
-            return nullptr;
-        }
-        VideoFramePtr frame = queue_.front();
-        queue_.pop();
-        cond_full_.notify_one();
-        return frame;
-    }
-
-    VideoFramePtr peek()
-    {
-        std::unique_lock<std::mutex> lock(mutex_);
-        if (queue_.empty())
-        {
-            return nullptr;
-        }
-        return queue_.front();
-    }
-
-    void clear()
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        std::queue<VideoFramePtr> empty;
-        std::swap(queue_, empty);
-        cond_full_.notify_all();
+        rindex_ = 0;
+        windex_ = 0;
+        size_ = 0;
+        rindex_shown_ = 0;
     }
 
     void abort()
     {
-        abort_ = true;
-        cond_full_.notify_all();
-        cond_empty_.notify_all();
+        std::lock_guard<std::mutex> lock(mutex_);
+        cond_.notify_all();
     }
 
-    void start() { abort_ = false; }
+    Frame *peek_writable()
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
+        while (size_ >= max_size_ && !pktq_->is_aborted())
+        {
+            cond_.wait(lock);
+        }
 
-    bool empty()
+        if (pktq_->is_aborted())
+            return nullptr;
+
+        return &queue_[windex_];
+    }
+
+    void push()
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        return queue_.empty();
+        if (++windex_ == max_size_)
+            windex_ = 0;
+        size_++;
+        cond_.notify_all();
+    }
+
+    Frame *peek_readable()
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
+        while (size_ - rindex_shown_ <= 0 && !pktq_->is_aborted())
+        {
+            cond_.wait(lock);
+        }
+
+        if (pktq_->is_aborted())
+            return nullptr;
+
+        return &queue_[(rindex_ + rindex_shown_) % max_size_];
+    }
+
+    Frame *peek_last() { return &queue_[rindex_]; }
+
+    Frame *peek_next() { return &queue_[(rindex_ + rindex_shown_ + 1) % max_size_]; }
+
+    void next()
+    {
+        if (keep_last_ && !rindex_shown_)
+        {
+            rindex_shown_ = 1;
+            return;
+        }
+
+        av_frame_unref(queue_[rindex_].frame);
+
+        if (++rindex_ == max_size_)
+            rindex_ = 0;
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        size_--;
+        cond_.notify_all();
+    }
+
+    int remaining()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return size_ - rindex_shown_;
     }
 
    private:
-    std::queue<VideoFramePtr> queue_;
+    std::vector<Frame> queue_;
+    int rindex_ = 0;
+    int windex_ = 0;
+    int size_ = 0;
+    int max_size_ = 0;
+    int rindex_shown_ = 0;
+    bool keep_last_ = false;
+
     std::mutex mutex_;
-    std::condition_variable cond_empty_;
-    std::condition_variable cond_full_;
-    std::atomic<bool> abort_{false};
-    size_t max_size_ = 16;
+    std::condition_variable cond_;
+    packet_queue *pktq_ = nullptr;
 };
 
 #endif

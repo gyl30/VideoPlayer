@@ -2,40 +2,42 @@
 #define VIDEO_FRAME_H
 
 #include <cstdint>
-#include <memory>
-#include <QMetaType>
 
 extern "C"
 {
 #include <libavutil/frame.h>
 }
 
-struct video_frame
+struct Frame
 {
-    std::shared_ptr<AVFrame> av_frame;
-    double pts = 0.0;
-    double duration = 0.0;
+    AVFrame *frame;
+    int serial;
+    double pts;
+    double duration;
+    int64_t pos;
+    int width;
+    int height;
+    bool uploaded;
 
-    static std::shared_ptr<video_frame> make(AVFrame *src, double pts, double duration)
+    Frame()
     {
-        auto vf = std::make_shared<video_frame>();
-        vf->av_frame = std::shared_ptr<AVFrame>(av_frame_alloc(), [](AVFrame *f) { av_frame_free(&f); });
+        frame = av_frame_alloc();
+        serial = -1;
+        pts = 0.0;
+        duration = 0.0;
+        pos = -1;
+        width = 0;
+        height = 0;
+        uploaded = false;
+    }
 
-        if (src != nullptr)
+    ~Frame()
+    {
+        if (frame)
         {
-            av_frame_ref(vf->av_frame.get(), src);
+            av_frame_free(&frame);
         }
-
-        vf->pts = pts;
-        vf->duration = duration;
-        return vf;
     }
 };
-
-using VideoFramePtr = std::shared_ptr<video_frame>;
-
-Q_DECLARE_METATYPE(VideoFramePtr)
-
-inline bool is_valid(const VideoFramePtr &frame) { return frame && frame->av_frame && frame->av_frame->width > 0 && frame->av_frame->height > 0; }
 
 #endif
