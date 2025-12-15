@@ -9,14 +9,17 @@
 #include <vector>
 #include <condition_variable>
 #include <mutex>
+#include <functional>
 #include "video_frame.h"
 #include "frame_queue.h"
 #include "packet_queue.h"
 #include "av_clock.h"
+#include "decoder_backend.h"
 
 struct AVFormatContext;
 struct AVCodecContext;
 struct SwrContext;
+struct SwsContext;
 struct AVStream;
 struct AVBufferRef;
 struct AVCodec;
@@ -28,11 +31,13 @@ class video_decoder : public QObject
 {
     Q_OBJECT
    public:
+    using RenderCallback = std::function<void(Frame *frame)>;
+
     explicit video_decoder(QObject *parent = nullptr);
     ~video_decoder() override;
 
    public:
-    bool open(const QString &file_path);
+    bool open(const QString &file_path, RenderCallback render_cb);
     void stop();
 
     void seek(double pos);
@@ -43,7 +48,7 @@ class video_decoder : public QObject
 
     bool is_stopping() const { return abort_request_; }
 
-    int current_hw_pix_fmt() const { return hw_pix_fmt_; }
+    int current_hw_pix_fmt() const;
 
     frame_queue video_frame_queue_;
     packet_queue video_packet_queue_;
@@ -52,13 +57,13 @@ class video_decoder : public QObject
     void demux_thread_func();
     void video_thread_func();
     void audio_thread_func();
+    void render_thread_func();
 
     bool init_video_decoder(AVFormatContext *fmt_ctx);
     bool init_audio_decoder(AVFormatContext *fmt_ctx);
     void free_resources();
 
-    bool init_hw_decoder(const AVCodec *codec);
-    bool open_codec_context(const AVCodec *codec, AVCodecParameters *par, bool try_hw);
+    bool open_codec_context(const AVCodec *codec, AVCodecParameters *par);
     void audio_callback_impl(uint8_t *stream, int len);
 
     void notify_packet_consumed();
@@ -76,6 +81,9 @@ class video_decoder : public QObject
     std::thread demux_thread_;
     std::thread video_thread_;
     std::thread audio_thread_;
+    std::thread render_thread_;
+
+    RenderCallback render_cb_;
 
     packet_queue audio_packet_queue_;
     frame_queue audio_frame_queue_;
@@ -91,15 +99,12 @@ class video_decoder : public QObject
     int audio_index_ = -1;
 
     AVFormatContext *fmt_ctx_ = nullptr;
-    AVCodecContext *video_ctx_ = nullptr;
+    std::unique_ptr<decoder_backend> video_backend_;
     AVCodecContext *audio_ctx_ = nullptr;
     SwrContext *swr_ctx_ = nullptr;
+    SwsContext *img_convert_ctx_ = nullptr;
     AVStream *video_stream_ = nullptr;
     AVStream *audio_stream_ = nullptr;
-
-    AVBufferRef *hw_device_ctx_ = nullptr;
-    int hw_pix_fmt_ = -1;
-    bool is_hw_decoding_ = false;
 
     std::unique_ptr<audio_output> audio_out_;
 
@@ -115,6 +120,9 @@ class video_decoder : public QObject
         int channels = 0;
         int format = -1;
     } last_audio_params_;
+
+    double frame_timer_ = 0.0;
+    double prev_frame_delay_ = 0.04;
 };
 
 #endif

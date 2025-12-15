@@ -36,15 +36,16 @@ class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
 
    private:
     AVFrame* current_frame_ = nullptr;
+    AVFrame* sw_frame_ = nullptr;
     std::mutex frame_mutex_;
-    
+
     bool texture_alloced_ = false;
     int tex_width_ = 0;
     int tex_height_ = 0;
     int tex_format_ = -1;
 
     std::unique_ptr<QOpenGLShaderProgram> program_;
-    std::unique_ptr<QOpenGLTexture> tex_[3]; 
+    std::unique_ptr<QOpenGLTexture> tex_[3];
     QOpenGLBuffer vbo_;
 
     QOpenGLBuffer pbo_[2][3];

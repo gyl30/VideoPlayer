@@ -1,6 +1,12 @@
 #include "video_widget.h"
 #include <QOpenGLTexture>
 #include <cstddef>
+#include <cstring>
+
+extern "C"
+{
+#include <libavutil/hwcontext.h>
+}
 
 static const char *kVertexShaderSource = R"(
     attribute highp vec4 vertex_in;
@@ -60,12 +66,38 @@ video_widget::~video_widget()
     }
     program_.reset();
     doneCurrent();
+    if (sw_frame_ != nullptr)
+    {
+        av_frame_free(&sw_frame_);
+    }
 }
 
 void video_widget::update_frame(AVFrame *frame)
 {
     std::lock_guard<std::mutex> lock(frame_mutex_);
-    current_frame_ = frame;
+
+    if (frame->format == AV_PIX_FMT_CUDA || frame->format == AV_PIX_FMT_VAAPI || frame->format == AV_PIX_FMT_D3D11)
+    {
+        if (sw_frame_ == nullptr)
+        {
+            sw_frame_ = av_frame_alloc();
+        }
+
+        if (av_hwframe_transfer_data(sw_frame_, frame, 0) >= 0)
+        {
+            sw_frame_->pts = frame->pts;
+            current_frame_ = sw_frame_;
+        }
+        else
+        {
+            return;
+        }
+    }
+    else
+    {
+        current_frame_ = frame;
+    }
+
     update();
 }
 

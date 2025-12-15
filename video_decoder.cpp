@@ -8,6 +8,7 @@ extern "C"
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libswresample/swresample.h>
+#include <libswscale/swscale.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/time.h>
 #include <libavutil/opt.h>
@@ -21,33 +22,21 @@ int video_decoder::decode_interrupt_cb(void *ctx)
     return decoder->is_stopping() ? 1 : 0;
 }
 
-static enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts)
-{
-    const enum AVPixelFormat *p;
-    auto *decoder = static_cast<video_decoder *>(ctx->opaque);
-
-    for (p = pix_fmts; *p != -1; p++)
-    {
-        if (*p == static_cast<enum AVPixelFormat>(decoder->current_hw_pix_fmt()))
-        {
-            return *p;
-        }
-    }
-    return AV_PIX_FMT_NONE;
-}
-
 video_decoder::video_decoder(QObject *parent) : QObject(parent) { audio_out_ = std::make_unique<audio_output>(); }
 
 video_decoder::~video_decoder() { stop(); }
 
-bool video_decoder::open(const QString &file_path)
+bool video_decoder::open(const QString &file_path, RenderCallback render_cb)
 {
     stop();
     file_ = file_path;
+    render_cb_ = std::move(render_cb);
     abort_request_ = false;
     seek_req_ = false;
     video_ctx_serial_ = -1;
     audio_ctx_serial_ = -1;
+    video_index_ = -1;
+    audio_index_ = -1;
 
     video_packet_queue_.start();
     audio_packet_queue_.start();
@@ -64,6 +53,7 @@ bool video_decoder::open(const QString &file_path)
     ext_clk_.init(&ext_gen);
 
     demux_thread_ = std::thread(&video_decoder::demux_thread_func, this);
+    render_thread_ = std::thread(&video_decoder::render_thread_func, this);
     return true;
 }
 
@@ -89,6 +79,10 @@ void video_decoder::stop()
     if (audio_thread_.joinable())
     {
         audio_thread_.join();
+    }
+    if (render_thread_.joinable())
+    {
+        render_thread_.join();
     }
 
     audio_out_->stop();
@@ -118,6 +112,15 @@ double video_decoder::get_frame_rate() const
         return av_q2d(video_stream_->avg_frame_rate);
     }
     return 0.0;
+}
+
+int video_decoder::current_hw_pix_fmt() const
+{
+    if (video_backend_)
+    {
+        return static_cast<int>(video_backend_->get_pixel_format());
+    }
+    return -1;
 }
 
 void video_decoder::notify_packet_consumed()
@@ -189,10 +192,10 @@ void video_decoder::demux_thread_func()
             seek_req_ = false;
         }
 
-        bool video_full = (video_index_ != -1) && (video_packet_queue_.size() > 15 * 1024 * 1024 ||
-                                                   (static_cast<double>(video_packet_queue_.duration()) * av_q2d(video_stream_->time_base) > 1.0));
-        bool audio_full = (audio_index_ != -1) && (audio_packet_queue_.size() > 5 * 1024 * 1024 ||
-                                                   (static_cast<double>(audio_packet_queue_.duration()) * av_q2d(audio_stream_->time_base) > 1.0));
+        bool video_full = (video_index_ >= 0) && (video_packet_queue_.size() > 15 * 1024 * 1024 ||
+                                                  (static_cast<double>(video_packet_queue_.duration()) * av_q2d(video_stream_->time_base) > 1.0));
+        bool audio_full = (audio_index_ >= 0) && (audio_packet_queue_.size() > 5 * 1024 * 1024 ||
+                                                  (static_cast<double>(audio_packet_queue_.duration()) * av_q2d(audio_stream_->time_base) > 1.0));
 
         if ((video_full || audio_full) && !abort_request_)
         {
@@ -250,11 +253,11 @@ void video_decoder::video_thread_func()
 
         if (serial != video_ctx_serial_)
         {
-            avcodec_flush_buffers(video_ctx_);
+            video_backend_->flush();
             video_ctx_serial_ = serial;
         }
 
-        if (avcodec_send_packet(video_ctx_, pkt) < 0)
+        if (video_backend_->send_packet(pkt) < 0)
         {
             av_packet_unref(pkt);
             continue;
@@ -263,44 +266,74 @@ void video_decoder::video_thread_func()
 
         while (true)
         {
-            int ret = avcodec_receive_frame(video_ctx_, frame);
+            int ret = video_backend_->receive_frame(frame);
             if (ret < 0)
             {
                 break;
             }
 
             AVFrame *final_frame = frame;
-            bool needs_unref_sw = false;
+            bool frame_converted = false;
 
-            if (frame->format == hw_pix_fmt_)
+            if (frame->format != AV_PIX_FMT_YUV420P && frame->format != AV_PIX_FMT_YUVJ420P && frame->format != AV_PIX_FMT_NV12 &&
+                frame->format != AV_PIX_FMT_CUDA && frame->format != AV_PIX_FMT_VAAPI && frame->format != AV_PIX_FMT_D3D11)
             {
-                if (av_hwframe_transfer_data(sw_frame, frame, 0) >= 0)
+                if (img_convert_ctx_ == nullptr || av_image_get_buffer_size(AV_PIX_FMT_YUV420P, frame->width, frame->height, 1) < 0)
                 {
-                    av_frame_copy_props(sw_frame, frame);
-                    final_frame = sw_frame;
-                    needs_unref_sw = true;
+                    if (img_convert_ctx_ != nullptr)
+                    {
+                        sws_freeContext(img_convert_ctx_);
+                    }
+
+                    img_convert_ctx_ = sws_getContext(frame->width,
+                                                      frame->height,
+                                                      static_cast<AVPixelFormat>(frame->format),
+                                                      frame->width,
+                                                      frame->height,
+                                                      AV_PIX_FMT_YUV420P,
+                                                      SWS_BICUBIC,
+                                                      nullptr,
+                                                      nullptr,
+                                                      nullptr);
                 }
-                else
+
+                if (img_convert_ctx_ != nullptr)
                 {
-                    av_frame_unref(frame);
-                    continue;
+                    av_frame_unref(sw_frame);
+                    sw_frame->format = AV_PIX_FMT_YUV420P;
+                    sw_frame->width = frame->width;
+                    sw_frame->height = frame->height;
+
+                    if (av_frame_get_buffer(sw_frame, 32) >= 0)
+                    {
+                        sws_scale(img_convert_ctx_, frame->data, frame->linesize, 0, frame->height, sw_frame->data, sw_frame->linesize);
+
+                        sw_frame->pts = frame->pts;
+                        sw_frame->pkt_dts = frame->pkt_dts;
+                        sw_frame->duration = frame->duration;
+                        sw_frame->best_effort_timestamp = frame->best_effort_timestamp;
+
+                        final_frame = sw_frame;
+                        frame_converted = true;
+                    }
                 }
             }
 
             Frame *vp = video_frame_queue_.peek_writable();
             if (vp == nullptr)
             {
-                if (needs_unref_sw)
+                av_frame_unref(frame);
+                if (frame_converted)
                 {
                     av_frame_unref(sw_frame);
                 }
-                av_frame_unref(frame);
                 break;
             }
 
+            AVRational tb = video_stream_->time_base;
             vp->serial = serial;
-            vp->pts = (final_frame->pts == AV_NOPTS_VALUE) ? NAN : static_cast<double>(final_frame->pts) * av_q2d(video_stream_->time_base);
-            vp->duration = (final_frame->duration == 0) ? 0 : static_cast<double>(final_frame->duration) * av_q2d(video_stream_->time_base);
+            vp->pts = (final_frame->pts == AV_NOPTS_VALUE) ? NAN : static_cast<double>(final_frame->pts) * av_q2d(tb);
+            vp->duration = (final_frame->duration == 0) ? 0 : static_cast<double>(final_frame->duration) * av_q2d(tb);
             vp->width = final_frame->width;
             vp->height = final_frame->height;
             vp->format = final_frame->format;
@@ -308,12 +341,123 @@ void video_decoder::video_thread_func()
             av_frame_move_ref(vp->frame, final_frame);
             video_frame_queue_.push();
 
-            if (needs_unref_sw)
+            if (frame_converted)
             {
                 av_frame_unref(sw_frame);
             }
-            av_frame_unref(frame);
         }
+    }
+}
+
+void video_decoder::render_thread_func()
+{
+    frame_timer_ = static_cast<double>(av_gettime_relative()) / 1000000.0;
+    prev_frame_delay_ = 0.04;
+
+    while (!abort_request_)
+    {
+        if (video_frame_queue_.remaining() == 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+
+        Frame *lastvp = video_frame_queue_.peek_last();
+        Frame *vp = video_frame_queue_.peek_readable();
+
+        if (vp->serial != video_packet_queue_.serial())
+        {
+            video_frame_queue_.next();
+            continue;
+        }
+
+        if (lastvp->serial != vp->serial)
+        {
+            frame_timer_ = static_cast<double>(av_gettime_relative()) / 1000000.0;
+        }
+
+        double duration = vp->duration;
+        if (vp->serial == video_frame_queue_.peek_next()->serial)
+        {
+            double next_pts = video_frame_queue_.peek_next()->pts;
+            if (!std::isnan(next_pts) && !std::isnan(vp->pts))
+            {
+                duration = next_pts - vp->pts;
+            }
+        }
+
+        if (std::isnan(duration) || duration <= 0)
+        {
+            duration = prev_frame_delay_;
+        }
+
+        double delay = duration;
+        double ref_clock = get_master_clock();
+        double diff = vp->pts - ref_clock;
+
+        double sync_threshold = (delay > 0.1) ? 0.1 : 0.04;
+
+        if (!std::isnan(diff) && std::abs(diff) < 10.0)
+        {
+            if (diff <= -sync_threshold)
+            {
+                delay = std::max(0.0, delay + diff);
+            }
+            else if (diff >= sync_threshold && delay > 0.1)
+            {
+                delay = delay + diff;
+            }
+            else if (diff >= sync_threshold)
+            {
+                delay = 2 * delay;
+            }
+        }
+
+        prev_frame_delay_ = delay;
+        double time = static_cast<double>(av_gettime_relative()) / 1000000.0;
+
+        if (time < frame_timer_ + delay)
+        {
+            av_usleep(static_cast<unsigned int>((frame_timer_ + delay - time) * 1000000.0));
+            time = static_cast<double>(av_gettime_relative()) / 1000000.0;
+        }
+
+        frame_timer_ += delay;
+
+        if (delay > 0 && time - frame_timer_ > 0.1)
+        {
+            frame_timer_ = time;
+        }
+
+        if (video_frame_queue_.remaining() > 1)
+        {
+            Frame *nextvp = video_frame_queue_.peek_next();
+            double next_duration = 0.0;
+            if (vp->serial == nextvp->serial)
+            {
+                next_duration = nextvp->pts - vp->pts;
+                if (std::isnan(next_duration) || next_duration <= 0)
+                {
+                    next_duration = vp->duration;
+                }
+            }
+            else
+            {
+                next_duration = vp->duration;
+            }
+
+            if (time > frame_timer_ + next_duration)
+            {
+                video_frame_queue_.next();
+                continue;
+            }
+        }
+
+        if (render_cb_)
+        {
+            render_cb_(vp);
+        }
+        video_frame_queue_.next();
     }
 }
 
@@ -413,36 +557,7 @@ void video_decoder::audio_thread_func()
     }
 }
 
-bool video_decoder::init_hw_decoder(const AVCodec *codec)
-{
-    if (hw_device_ctx_ != nullptr)
-    {
-        av_buffer_unref(&hw_device_ctx_);
-        hw_device_ctx_ = nullptr;
-    }
-
-    for (int i = 0;; i++)
-    {
-        const AVCodecHWConfig *config = avcodec_get_hw_config(codec, i);
-        if (config == nullptr)
-        {
-            break;
-        }
-
-        if (((config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) != 0) && config->device_type != AV_HWDEVICE_TYPE_NONE)
-        {
-            if (av_hwdevice_ctx_create(&hw_device_ctx_, config->device_type, nullptr, nullptr, 0) < 0)
-            {
-                continue;
-            }
-            hw_pix_fmt_ = config->pix_fmt;
-            return true;
-        }
-    }
-    return false;
-}
-
-bool video_decoder::open_codec_context(const AVCodec *codec, AVCodecParameters *par, bool try_hw)
+bool video_decoder::open_codec_context(const AVCodec *codec, AVCodecParameters *par)
 {
     AVCodecContext *ctx = avcodec_alloc_context3(codec);
     if (ctx == nullptr)
@@ -456,25 +571,14 @@ bool video_decoder::open_codec_context(const AVCodec *codec, AVCodecParameters *
     }
 
     ctx->opaque = this;
-    if (try_hw)
+    ctx->thread_count = 0;
+    if ((codec->capabilities & AV_CODEC_CAP_FRAME_THREADS) != 0)
     {
-        ctx->get_format = get_hw_format;
-        if (hw_device_ctx_ != nullptr)
-        {
-            ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx_);
-        }
+        ctx->thread_type = FF_THREAD_FRAME;
     }
-    else
+    else if ((codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) != 0)
     {
-        ctx->thread_count = 0;
-        if ((codec->capabilities & AV_CODEC_CAP_FRAME_THREADS) != 0)
-        {
-            ctx->thread_type = FF_THREAD_FRAME;
-        }
-        else if ((codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) != 0)
-        {
-            ctx->thread_type = FF_THREAD_SLICE;
-        }
+        ctx->thread_type = FF_THREAD_SLICE;
     }
 
     if (avcodec_open2(ctx, codec, nullptr) < 0)
@@ -483,11 +587,7 @@ bool video_decoder::open_codec_context(const AVCodec *codec, AVCodecParameters *
         return false;
     }
 
-    if (ctx->codec_type == AVMEDIA_TYPE_VIDEO)
-    {
-        video_ctx_ = ctx;
-    }
-    else
+    if (ctx->codec_type == AVMEDIA_TYPE_AUDIO)
     {
         audio_ctx_ = ctx;
     }
@@ -503,38 +603,22 @@ bool video_decoder::init_video_decoder(AVFormatContext *fmt_ctx)
     }
 
     video_stream_ = fmt_ctx->streams[video_index_];
-    const AVCodec *codec = avcodec_find_decoder(video_stream_->codecpar->codec_id);
-    if (codec == nullptr)
-    {
-        return false;
-    }
 
-    bool hw_success = false;
-    if (init_hw_decoder(codec))
-    {
-        if (open_codec_context(codec, video_stream_->codecpar, true))
-        {
-            hw_success = true;
-            is_hw_decoding_ = true;
-        }
-    }
+    LOG_INFO("Attempting to initialize Hardware Decoder...");
+    video_backend_ = std::make_unique<hard_decoder_backend>();
 
-    if (!hw_success)
+    if (!video_backend_->init(video_stream_))
     {
-        if (hw_device_ctx_ != nullptr)
+        LOG_WARN("Hardware Decoder failed. Falling back to Software Decoder...");
+        video_backend_ = std::make_unique<soft_decoder_backend>();
+        if (!video_backend_->init(video_stream_))
         {
-            av_buffer_unref(&hw_device_ctx_);
-        }
-        hw_pix_fmt_ = AV_PIX_FMT_NONE;
-        if (open_codec_context(codec, video_stream_->codecpar, false))
-        {
-            is_hw_decoding_ = false;
-        }
-        else
-        {
+            LOG_ERROR("Software Decoder failed too. Cannot play video.");
             return false;
         }
     }
+
+    LOG_INFO("Video Decoder Backend Ready: {}", video_backend_->name());
     return true;
 }
 
@@ -553,7 +637,7 @@ bool video_decoder::init_audio_decoder(AVFormatContext *fmt_ctx)
         return false;
     }
 
-    if (!open_codec_context(codec, audio_stream_->codecpar, false))
+    if (!open_codec_context(codec, audio_stream_->codecpar))
     {
         return false;
     }
@@ -563,8 +647,6 @@ bool video_decoder::init_audio_decoder(AVFormatContext *fmt_ctx)
 
 void video_decoder::audio_callback_impl(uint8_t *stream, int len)
 {
-    int len1;
-    int audio_size;
     double audio_callback_time = static_cast<double>(av_gettime_relative()) / 1000000.0;
 
     while (len > 0)
@@ -602,8 +684,8 @@ void video_decoder::audio_callback_impl(uint8_t *stream, int len)
             }
         }
 
-        audio_size = af->frame->nb_samples * 4;
-        len1 = audio_size - audio_buf_index_;
+        int audio_size = af->frame->nb_samples * 4;
+        int len1 = audio_size - audio_buf_index_;
         len1 = std::min(len1, len);
 
         std::memcpy(stream, af->frame->data[0] + audio_buf_index_, static_cast<size_t>(len1));
@@ -624,24 +706,26 @@ double video_decoder::get_master_clock() { return aud_clk_.get(); }
 
 void video_decoder::free_resources()
 {
+    video_backend_.reset();
+
+    if (img_convert_ctx_ != nullptr)
+    {
+        sws_freeContext(img_convert_ctx_);
+        img_convert_ctx_ = nullptr;
+    }
     if (swr_ctx_ != nullptr)
     {
         swr_free(&swr_ctx_);
-    }
-    if (video_ctx_ != nullptr)
-    {
-        avcodec_free_context(&video_ctx_);
+        swr_ctx_ = nullptr;
     }
     if (audio_ctx_ != nullptr)
     {
         avcodec_free_context(&audio_ctx_);
+        audio_ctx_ = nullptr;
     }
     if (fmt_ctx_ != nullptr)
     {
         avformat_close_input(&fmt_ctx_);
-    }
-    if (hw_device_ctx_ != nullptr)
-    {
-        av_buffer_unref(&hw_device_ctx_);
+        fmt_ctx_ = nullptr;
     }
 }

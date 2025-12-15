@@ -103,6 +103,7 @@ pkg_check_modules(FFMPEG REQUIRED
     libavcodec 
     libavutil 
     libswresample 
+    libswscale
 )
 
 add_executable(VideoPlayer
@@ -112,6 +113,7 @@ add_executable(VideoPlayer
     audio_output.cpp
     video_decoder.cpp
     video_widget.cpp
+    decoder_backend.cpp
 )
 
 target_compile_options(VideoPlayer PRIVATE
