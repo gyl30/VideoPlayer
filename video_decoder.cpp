@@ -12,6 +12,7 @@ extern "C"
 #include <libavutil/imgutils.h>
 #include <libavutil/time.h>
 #include <libavutil/opt.h>
+#include <libavutil/error.h>
 
 #include <algorithm>
 }
@@ -24,41 +25,116 @@ int video_decoder::decode_interrupt_cb(void *ctx)
 
 video_decoder::video_decoder(QObject *parent) : QObject(parent) { audio_out_ = std::make_unique<audio_output>(); }
 
-video_decoder::~video_decoder() { stop(); }
+video_decoder::~video_decoder() { stop(0); }
 
-bool video_decoder::open(const QString &file_path, RenderCallback render_cb)
+void video_decoder::open_async(const QString &file_path, int64_t op_id)
 {
-    stop();
-    file_ = file_path;
-    render_cb_ = std::move(render_cb);
+    stop(op_id);
+
     abort_request_ = false;
-    seek_req_ = false;
-    video_ctx_serial_ = -1;
-    audio_ctx_serial_ = -1;
-    video_index_ = -1;
-    audio_index_ = -1;
 
-    video_packet_queue_.start();
-    audio_packet_queue_.start();
-
-    video_frame_queue_.init(&video_packet_queue_, 3, true);
-    video_frame_queue_.start();
-
-    audio_frame_queue_.init(&audio_packet_queue_, 9, false);
-    audio_frame_queue_.start();
-
-    vid_clk_.init(&video_packet_queue_.serial_ref());
-    aud_clk_.init(&audio_packet_queue_.serial_ref());
-    static std::atomic<int> ext_gen{0};
-    ext_clk_.init(&ext_gen);
-
-    demux_thread_ = std::thread(&video_decoder::demux_thread_func, this);
-    render_thread_ = std::thread(&video_decoder::render_thread_func, this);
-    return true;
+    file_ = file_path;
+    LOG_INFO("op id {} video decoder start opening file", op_id);
+    open_thread_ = std::thread(&video_decoder::open_thread_func, this, file_, op_id);
 }
 
-void video_decoder::stop()
+void video_decoder::open_thread_func(const QString &file, int64_t op_id)
 {
+    fmt_ctx_ = avformat_alloc_context();
+    if (fmt_ctx_ == nullptr)
+    {
+        LOG_ERROR("op id {} failed to alloc avformat context", op_id);
+        emit error_occurred(op_id, "failed to alloc avformat context");
+        return;
+    }
+
+    fmt_ctx_->interrupt_callback.callback = decode_interrupt_cb;
+    fmt_ctx_->interrupt_callback.opaque = this;
+
+    int ret = avformat_open_input(&fmt_ctx_, file.toStdString().c_str(), nullptr, nullptr);
+    if (ret != 0)
+    {
+        char errbuf[128] = {0};
+        av_strerror(ret, errbuf, sizeof(errbuf));
+        LOG_ERROR("op id {} failed to open input file error {} {}", op_id, ret, errbuf);
+        emit error_occurred(op_id, QString("failed to open input file: %1").arg(errbuf));
+        return;
+    }
+
+    if (avformat_find_stream_info(fmt_ctx_, nullptr) < 0)
+    {
+        LOG_ERROR("op id {} failed to find stream info", op_id);
+        emit error_occurred(op_id, "failed to find stream info");
+        return;
+    }
+
+    if (fmt_ctx_->duration != AV_NOPTS_VALUE)
+    {
+        total_duration_ = static_cast<double>(fmt_ctx_->duration) / AV_TIME_BASE;
+    }
+    else
+    {
+        total_duration_ = 0.0;
+    }
+
+    if (!init_video_decoder(fmt_ctx_, op_id))
+    {
+        if (video_index_ >= 0)
+        {
+            LOG_ERROR("op id {} failed to init video decoder", op_id);
+            emit error_occurred(op_id, "failed to init video decoder");
+            return;
+        }
+    }
+
+    init_audio_decoder(fmt_ctx_, op_id);
+
+    LOG_INFO("op id {} media info loaded duration {:.2f}", op_id, total_duration_.load());
+    emit media_info_loaded(op_id, total_duration_);
+}
+
+void video_decoder::start(int64_t op_id)
+{
+    LOG_INFO("op id {} video decoder receive start command", op_id);
+    if (is_paused_)
+    {
+        abort_request_ = false;
+        is_paused_ = false;
+
+        if (!demux_thread_.joinable())
+        {
+            video_packet_queue_.start();
+            audio_packet_queue_.start();
+
+            video_frame_queue_.init(&video_packet_queue_, 3, true);
+            video_frame_queue_.start();
+
+            audio_frame_queue_.init(&audio_packet_queue_, 9, false);
+            audio_frame_queue_.start();
+
+            vid_clk_.init(&video_packet_queue_.serial_ref());
+            aud_clk_.init(&audio_packet_queue_.serial_ref());
+            static std::atomic<int> ext_gen{0};
+            ext_clk_.init(&ext_gen);
+
+            demux_thread_ = std::thread(&video_decoder::demux_thread_func, this);
+            video_thread_ = std::thread(&video_decoder::video_thread_func, this);
+            audio_thread_ = std::thread(&video_decoder::audio_thread_func, this);
+            render_thread_ = std::thread(&video_decoder::render_thread_func, this);
+        }
+        else
+        {
+            vid_clk_.set_paused(false);
+            aud_clk_.set_paused(false);
+            ext_clk_.set_paused(false);
+            notify_packet_consumed();
+        }
+    }
+}
+
+void video_decoder::stop(int64_t op_id)
+{
+    LOG_INFO("op id {} stopping decoder", op_id);
     abort_request_ = true;
 
     video_packet_queue_.abort();
@@ -68,6 +144,10 @@ void video_decoder::stop()
 
     notify_packet_consumed();
 
+    if (open_thread_.joinable())
+    {
+        open_thread_.join();
+    }
     if (demux_thread_.joinable())
     {
         demux_thread_.join();
@@ -87,23 +167,23 @@ void video_decoder::stop()
 
     audio_out_->stop();
     free_resources();
+    is_paused_ = true;
 }
 
-void video_decoder::seek(double pos)
+void video_decoder::seek_async(double pos, int64_t op_id)
 {
+    LOG_INFO("op id {} video decoder receive seek request to {:.2f}", op_id, pos);
     seek_pos_ = pos;
+    seek_op_id_ = op_id;
     seek_req_ = true;
+    is_paused_ = true;
+
+    audio_buf_index_ = 0;
+
     notify_packet_consumed();
 }
 
-double video_decoder::get_duration() const
-{
-    if (fmt_ctx_ != nullptr && fmt_ctx_->duration != AV_NOPTS_VALUE)
-    {
-        return static_cast<double>(fmt_ctx_->duration) / AV_TIME_BASE;
-    }
-    return 0.0;
-}
+double video_decoder::get_duration() const { return total_duration_; }
 
 double video_decoder::get_frame_rate() const
 {
@@ -134,62 +214,40 @@ void video_decoder::demux_thread_func()
     AVPacket *pkt = av_packet_alloc();
     DEFER(av_packet_free(&pkt));
 
-    fmt_ctx_ = avformat_alloc_context();
-    if (fmt_ctx_ == nullptr)
-    {
-        LOG_ERROR("Failed to alloc avformat context");
-        return;
-    }
-
-    fmt_ctx_->interrupt_callback.callback = decode_interrupt_cb;
-    fmt_ctx_->interrupt_callback.opaque = this;
-
-    if (avformat_open_input(&fmt_ctx_, file_.toStdString().c_str(), nullptr, nullptr) != 0)
-    {
-        LOG_ERROR("Failed to open input file");
-        return;
-    }
-
-    if (avformat_find_stream_info(fmt_ctx_, nullptr) < 0)
-    {
-        LOG_ERROR("Failed to find stream info");
-        return;
-    }
-
-    if (init_video_decoder(fmt_ctx_))
-    {
-        video_thread_ = std::thread(&video_decoder::video_thread_func, this);
-    }
-
-    if (init_audio_decoder(fmt_ctx_))
-    {
-        audio_thread_ = std::thread(&video_decoder::audio_thread_func, this);
-    }
-
     while (!abort_request_)
     {
         if (seek_req_)
         {
+            int64_t current_op = seek_op_id_;
             auto seek_target = static_cast<int64_t>(seek_pos_ * AV_TIME_BASE);
-            if (avformat_seek_file(fmt_ctx_, -1, INT64_MIN, seek_target, INT64_MAX, 0) < 0)
+
+            LOG_INFO("op id {} executing internal seek", current_op);
+
+            int ret = avformat_seek_file(fmt_ctx_, -1, INT64_MIN, seek_target, INT64_MAX, 0);
+
+            if (ret < 0)
             {
-                LOG_ERROR("Seek failed");
+                LOG_ERROR("op id {} seek failed", current_op);
+                emit seek_finished(current_op, seek_pos_, false);
             }
             else
             {
                 video_packet_queue_.flush();
                 audio_packet_queue_.flush();
-                if (video_index_ >= 0)
-                {
-                    video_packet_queue_.put(pkt);
-                }
-                if (audio_index_ >= 0)
-                {
-                    audio_packet_queue_.put(pkt);
-                }
+
                 ext_clk_.set(seek_pos_, 0);
+
+                LOG_INFO("op id {} seek success notifying ui", current_op);
+                emit seek_finished(current_op, seek_pos_, true);
             }
             seek_req_ = false;
+        }
+
+        if (is_paused_)
+        {
+            std::unique_lock<std::mutex> lock(continue_read_mutex_);
+            continue_read_cv_.wait_for(lock, std::chrono::milliseconds(10));
+            continue;
         }
 
         bool video_full = (video_index_ >= 0) && (video_packet_queue_.size() > 15 * 1024 * 1024 ||
@@ -356,6 +414,12 @@ void video_decoder::render_thread_func()
 
     while (!abort_request_)
     {
+        if (is_paused_)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+
         if (video_frame_queue_.remaining() == 0)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -594,7 +658,7 @@ bool video_decoder::open_codec_context(const AVCodec *codec, AVCodecParameters *
     return true;
 }
 
-bool video_decoder::init_video_decoder(AVFormatContext *fmt_ctx)
+bool video_decoder::init_video_decoder(AVFormatContext *fmt_ctx, int64_t op_id)
 {
     video_index_ = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
     if (video_index_ < 0)
@@ -604,25 +668,25 @@ bool video_decoder::init_video_decoder(AVFormatContext *fmt_ctx)
 
     video_stream_ = fmt_ctx->streams[video_index_];
 
-    LOG_INFO("Attempting to initialize Hardware Decoder...");
+    LOG_INFO("op id {} attempting to initialize hardware decoder", op_id);
     video_backend_ = std::make_unique<hard_decoder_backend>();
 
     if (!video_backend_->init(video_stream_))
     {
-        LOG_WARN("Hardware Decoder failed. Falling back to Software Decoder...");
+        LOG_WARN("op id {} hardware decoder failed falling back to software decoder", op_id);
         video_backend_ = std::make_unique<soft_decoder_backend>();
         if (!video_backend_->init(video_stream_))
         {
-            LOG_ERROR("Software Decoder failed too. Cannot play video.");
+            LOG_ERROR("op id {} software decoder failed too cannot play video", op_id);
             return false;
         }
     }
 
-    LOG_INFO("Video Decoder Backend Ready: {}", video_backend_->name());
+    LOG_INFO("op id {} video decoder backend ready {}", op_id, video_backend_->name());
     return true;
 }
 
-bool video_decoder::init_audio_decoder(AVFormatContext *fmt_ctx)
+bool video_decoder::init_audio_decoder(AVFormatContext *fmt_ctx, int64_t /*op_id*/)
 {
     audio_index_ = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
     if (audio_index_ < 0)
@@ -651,7 +715,7 @@ void video_decoder::audio_callback_impl(uint8_t *stream, int len)
 
     while (len > 0)
     {
-        if (abort_request_)
+        if (abort_request_ || is_paused_)
         {
             std::memset(stream, 0, static_cast<size_t>(len));
             return;
