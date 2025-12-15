@@ -1,0 +1,78 @@
+@startuml
+skinparam componentStyle uml2
+skinparam packageStyle rectangle
+
+package "Input Source" {
+    [File / Network Stream] as Input
+}
+
+package "Demux Thread" #LightBlue {
+    [Demuxer]
+}
+
+package "Queues (Thread Safe)" {
+    queue "Video Packet Queue" as VPQ
+    queue "Audio Packet Queue" as APQ
+}
+
+package "Video Decode Thread" #LightGreen {
+    [Video Decoder] as VDec
+    note bottom of VDec
+      Hardware Accel
+      or Software
+    end note
+}
+
+package "Audio Decode Thread" #LightGreen {
+    [Audio Decoder] as ADec
+    [Audio SWR (Resample)] as SWR
+    note bottom of SWR
+      Convert to 
+      Target Format
+      HERE
+    end note
+}
+
+package "Frame Queues (Thread Safe)" {
+    queue "Video Frame Queue" as VFQ
+    queue "Audio Frame Queue" as AFQ
+}
+
+package "Sync Mechanism" #Yellow {
+    [AV Clock] as Clock
+    note right of Clock
+      Master Clock
+      (Audio Based)
+    end note
+}
+
+package "Main / Render Thread" #LightCoral {
+    [Video Widget (OpenGL)] as GL
+    [Shader (YUV->RGB)] as Shader
+}
+
+package "Audio Callback Thread" #LightCoral {
+    [Audio Output (SDL)] as AudioOut
+}
+
+' Data Flow Connections
+Input --> Demuxer : Read
+Demuxer --> VPQ : Push Packet
+Demuxer --> APQ : Push Packet
+
+VPQ --> VDec : Pop Packet
+VDec --> VFQ : Push Frame (YUV)
+
+APQ --> ADec : Pop Packet
+ADec -> SWR : Raw PCM
+SWR --> AFQ : Push Frame (Resampled)
+
+VFQ --> GL : Peek/Pop Frame
+GL -> Shader : Upload Texture
+Shader -> GL : Render
+
+AFQ --> AudioOut : Pop Frame
+AudioOut --> Clock : **Update Time**
+GL ..> Clock : **Read Time (Sync)**
+
+@enduml

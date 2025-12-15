@@ -1,0 +1,58 @@
+@startuml
+autonumber
+
+box "Demux & Decode" #FaFaFa
+    participant "Demuxer" as Demux
+    participant "PacketQueue" as PQ
+    participant "Decoder" as Dec
+    participant "FrameQueue" as FQ
+end box
+
+box "Audio Output (Master)" #E6F2FF
+    participant "AudioDevice\n(Callback)" as Audio
+    participant "AV_Clock" as Clock
+end box
+
+box "Video Render (Slave)" #FFE6E6
+    participant "VideoWidget\n(Timer/Loop)" as Video
+    participant "OpenGL\n(GPU)" as GPU
+end box
+
+== 1. 数据生产阶段 (Parallel) ==
+Demux -> PQ : Put Packet
+loop Decode Thread
+    Dec -> PQ : Get Packet
+    Dec -> Dec : Decode & Process\n(Audio: Resample)\n(Video: HW Copy)
+    Dec -> FQ : Put Frame
+end
+
+== 2. 音频驱动时钟 (Master) ==
+Audio -> FQ : Get Audio Frame
+activate Audio
+Audio -> Audio : Copy PCM to Device
+Audio -> Clock : **Set Clock Time**\n(pts + duration)
+deactivate Audio
+
+== 3. 视频同步渲染 (Slave) ==
+Video -> FQ : Peek Video Frame
+activate Video
+Video -> Clock : **Get Current Time**
+
+group Sync Logic (A/V Sync)
+    Video -> Video : Diff = Frame.pts - Clock.time
+    
+    alt Diff > Threshold (Too Early)
+        Video -> Video : **Delay** (Wait)
+    else Diff < -Threshold (Too Late)
+        Video -> FQ : Drop Frame (Next)
+        Video -> Video : Retry
+    else In Sync
+        Video -> FQ : Pop Frame
+        Video -> GPU : **Upload YUV Texture**
+        GPU -> GPU : **Shader (YUV to RGB)**
+        GPU -> Video : Draw
+    end
+end
+deactivate Video
+
+@enduml
