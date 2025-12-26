@@ -1,287 +1,257 @@
+#include "log.h"
 #include "video_widget.h"
-#include <QOpenGLTexture>
-#include <cstddef>
-#include <cstring>
 
-extern "C"
-{
-#include <libavutil/hwcontext.h>
-}
-
-static const char *kVertexShaderSource = R"(
-    attribute highp vec4 vertex_in;
-    attribute highp vec2 texture_in;
-    varying highp vec2 texture_out;
-    void main(void) {
-        gl_Position = vertex_in;
-        texture_out = texture_in;
-    }
-)";
-
-static const char *kFragmentShaderSource = R"(
-    varying highp vec2 texture_out;
-    uniform sampler2D tex_y;
-    uniform sampler2D tex_u;
-    uniform sampler2D tex_v;
-    uniform int format; 
-    
-    void main(void) {
-        highp vec3 yuv;
-        highp vec3 rgb;
-        
-        yuv.x = texture2D(tex_y, texture_out).r;
-        
-        if (format == 0) { 
-            yuv.y = texture2D(tex_u, texture_out).r - 0.5;
-            yuv.z = texture2D(tex_v, texture_out).r - 0.5;
-        } else if (format == 1) { 
-            highp vec2 uv = texture2D(tex_u, texture_out).rg;
-            yuv.y = uv.r - 0.5;
-            yuv.z = uv.g - 0.5;
-        }
-        
-        rgb = mat3(1.0, 1.0, 1.0,
-                   0.0, -0.344136, 1.772,
-                   1.402, -0.714136, 0.0) * yuv;
-        gl_FragColor = vec4(rgb, 1.0);
-    }
-)";
-
-video_widget::video_widget(QWidget *parent) : QOpenGLWidget(parent), vbo_(QOpenGLBuffer::VertexBuffer) {}
+video_widget::video_widget(QWidget *parent) : QOpenGLWidget(parent) { LOG_INFO("video widget constructed"); }
 
 video_widget::~video_widget()
 {
+    LOG_INFO("video widget destroying");
     makeCurrent();
-    vbo_.destroy();
-    for (auto &i : pbo_)
+    delete program_;
+    if (texture_inited_)
     {
-        for (auto &p : i)
-        {
-            p.destroy();
-        }
+        glDeleteTextures(3, textures_);
     }
-    for (auto &t : tex_)
-    {
-        t.reset();
-    }
-    program_.reset();
     doneCurrent();
-    if (sw_frame_ != nullptr)
-    {
-        av_frame_free(&sw_frame_);
-    }
 }
 
-void video_widget::update_frame(AVFrame *frame)
+void video_widget::clear()
 {
-    std::lock_guard<std::mutex> lock(frame_mutex_);
+    current_frame_ = nullptr;
+    update();
+}
 
-    if (frame->format == AV_PIX_FMT_CUDA || frame->format == AV_PIX_FMT_VAAPI || frame->format == AV_PIX_FMT_D3D11)
+void video_widget::on_frame_ready(std::shared_ptr<media_frame> frame)
+{
+    if (frame == nullptr)
     {
-        if (sw_frame_ == nullptr)
-        {
-            sw_frame_ = av_frame_alloc();
-        }
-
-        if (av_hwframe_transfer_data(sw_frame_, frame, 0) >= 0)
-        {
-            sw_frame_->pts = frame->pts;
-            current_frame_ = sw_frame_;
-        }
-        else
-        {
-            return;
-        }
-    }
-    else
-    {
-        current_frame_ = frame;
+        return;
     }
 
+    auto *raw = frame->raw();
+    if (raw->colorspace != current_color_space_ || raw->color_range != current_color_range_)
+    {
+        update_color_matrix(raw);
+    }
+
+    current_frame_ = std::move(frame);
     update();
 }
 
 void video_widget::initializeGL()
 {
+    LOG_INFO("video widget initialize gl");
     initializeOpenGLFunctions();
-    glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
-    init_shader();
-    static const float kVertices[] = {-1.0F, -1.0F, 0.0F, 1.0F, 1.0F, -1.0F, 1.0F, 1.0F, -1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F, 0.0F};
-    vbo_.create();
-    vbo_.bind();
-    vbo_.allocate(kVertices, sizeof(kVertices));
-    for (auto &i : pbo_)
-    {
-        for (auto &j : i)
-        {
-            j = QOpenGLBuffer(QOpenGLBuffer::PixelUnpackBuffer);
-            j.create();
-        }
-    }
-}
 
-void video_widget::paintGL()
-{
-    std::lock_guard<std::mutex> lock(frame_mutex_);
-    glClear(GL_COLOR_BUFFER_BIT);
+    program_ = new QOpenGLShaderProgram(this);
+    program_->addShaderFromSourceCode(QOpenGLShader::Vertex,
+                                      "#version 120\n"
+                                      "attribute vec4 position;\n"
+                                      "attribute vec2 texCoord;\n"
+                                      "varying vec2 vTexCoord;\n"
+                                      "void main() {\n"
+                                      "    gl_Position = position;\n"
+                                      "    vTexCoord = texCoord;\n"
+                                      "}\n");
 
-    if (current_frame_ == nullptr || !program_ || current_frame_->width == 0)
-    {
-        return;
-    }
+    program_->addShaderFromSourceCode(QOpenGLShader::Fragment,
+                                      "#version 120\n"
+                                      "varying vec2 vTexCoord;\n"
+                                      "uniform sampler2D texY;\n"
+                                      "uniform sampler2D texU;\n"
+                                      "uniform sampler2D texV;\n"
+                                      "uniform mat4 colorMatrix;\n"
+                                      "void main() {\n"
+                                      "    vec3 yuv;\n"
+                                      "    yuv.x = texture2D(texY, vTexCoord).r;\n"
+                                      "    yuv.y = texture2D(texU, vTexCoord).r;\n"
+                                      "    yuv.z = texture2D(texV, vTexCoord).r;\n"
+                                      "    gl_FragColor = colorMatrix * vec4(yuv, 1.0);\n"
+                                      "}\n");
 
-    int fmt_type = 0;
-    if (current_frame_->format == AV_PIX_FMT_NV12)
+    if (!program_->link())
     {
-        fmt_type = 1;
+        LOG_ERROR("video widget shader link failed");
     }
-    else if (current_frame_->format != AV_PIX_FMT_YUV420P && current_frame_->format != AV_PIX_FMT_YUVJ420P)
+    else
     {
-        return;
-    }
-
-    if (!texture_alloced_ || tex_width_ != current_frame_->width || tex_height_ != current_frame_->height || tex_format_ != fmt_type)
-    {
-        init_textures(current_frame_->width, current_frame_->height, fmt_type);
+        LOG_INFO("video widget shader linked successfully");
     }
 
-    if (!texture_alloced_)
-    {
-        return;
-    }
+    matrix_uniform_loc_ = program_->uniformLocation("colorMatrix");
+    glGenTextures(3, textures_);
 
-    upload_texture(current_frame_);
-
-    program_->bind();
-    vbo_.bind();
-    program_->enableAttributeArray("vertex_in");
-    program_->setAttributeBuffer("vertex_in", GL_FLOAT, 0, 2, 4 * sizeof(float));
-    program_->enableAttributeArray("texture_in");
-    program_->setAttributeBuffer("texture_in", GL_FLOAT, 2 * sizeof(float), 2, 4 * sizeof(float));
-
-    tex_[0]->bind(0);
-    tex_[1]->bind(1);
-    if (fmt_type == 0)
-    {
-        tex_[2]->bind(2);
-    }
-
-    program_->setUniformValue("tex_y", 0);
-    program_->setUniformValue("tex_u", 1);
-    program_->setUniformValue("tex_v", 2);
-    program_->setUniformValue("format", fmt_type);
-
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-    tex_[0]->release();
-    tex_[1]->release();
-    if (fmt_type == 0)
-    {
-        tex_[2]->release();
-    }
-    program_->release();
-}
-
-void video_widget::upload_texture(AVFrame *frame)
-{
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-    int num_planes = (tex_format_ == 1) ? 2 : 3;
-    int widths[3] = {frame->width, frame->width / 2, frame->width / 2};
-    int heights[3] = {frame->height, frame->height / 2, frame->height / 2};
-
-    if (tex_format_ == 1)
-    {
-        widths[1] = frame->width;
-        heights[1] = frame->height / 2;
-    }
-
-    for (int i = 0; i < num_planes; i++)
-    {
-        int size = heights[i] * frame->linesize[i];
-        if (tex_format_ == 1 && i == 1)
-        {
-            size = heights[i] * frame->linesize[1];
-        }
-
-        pbo_[pbo_index_][i].bind();
-        if (pbo_[pbo_index_][i].size() < size)
-        {
-            pbo_[pbo_index_][i].allocate(size);
-        }
-
-        auto *ptr = static_cast<uint8_t *>(pbo_[pbo_index_][i].map(QOpenGLBuffer::WriteOnly));
-        if (ptr != nullptr)
-        {
-            if (tex_format_ == 1 && i == 1)
-            {
-                std::memcpy(ptr, frame->data[1], static_cast<size_t>(size));
-            }
-            else
-            {
-                std::memcpy(ptr, frame->data[i], static_cast<size_t>(size));
-            }
-            pbo_[pbo_index_][i].unmap();
-        }
-
-        tex_[i]->bind();
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, frame->linesize[i]);
-        if (tex_format_ == 1 && i == 1)
-        {
-            glPixelStorei(GL_UNPACK_ROW_LENGTH, frame->linesize[1] / 2);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, widths[i], heights[i], GL_RG, GL_UNSIGNED_BYTE, nullptr);
-        }
-        else
-        {
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, widths[i], heights[i], GL_RED, GL_UNSIGNED_BYTE, nullptr);
-        }
-        pbo_[pbo_index_][i].release();
-    }
-    pbo_index_ = (pbo_index_ + 1) % 2;
+    color_matrix_ = get_color_matrix(AVCOL_SPC_BT470BG, AVCOL_RANGE_MPEG);
 }
 
 void video_widget::resizeGL(int w, int h) { glViewport(0, 0, w, h); }
 
-void video_widget::init_shader()
+void video_widget::paintGL()
 {
-    program_ = std::make_unique<QOpenGLShaderProgram>();
-    program_->addShaderFromSourceCode(QOpenGLShader::Vertex, kVertexShaderSource);
-    program_->addShaderFromSourceCode(QOpenGLShader::Fragment, kFragmentShaderSource);
-    program_->link();
+    glClearColor(0.0F, 0.0F, 0.0F, 1.0F);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    if (current_frame_ == nullptr)
+    {
+        return;
+    }
+
+    if (!program_->bind())
+    {
+        LOG_ERROR("video widget failed to bind shader program");
+        return;
+    }
+
+    if (current_frame_->raw()->width != tex_width_ || current_frame_->raw()->height != tex_height_)
+    {
+        tex_width_ = current_frame_->raw()->width;
+        tex_height_ = current_frame_->raw()->height;
+        LOG_INFO("video widget texture resize to {}x{}", tex_width_, tex_height_);
+
+        for (int i = 0; i < 3; i++)
+        {
+            glBindTexture(GL_TEXTURE_2D, textures_[i]);
+            const int w = (i == 0) ? tex_width_ : tex_width_ / 2;
+            const int h = (i == 0) ? tex_height_ : tex_height_ / 2;
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        }
+        texture_inited_ = true;
+    }
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textures_[0]);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tex_width_, tex_height_, GL_RED, GL_UNSIGNED_BYTE, current_frame_->raw()->data[0]);
+    program_->setUniformValue("texY", 0);
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, textures_[1]);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tex_width_ / 2, tex_height_ / 2, GL_RED, GL_UNSIGNED_BYTE, current_frame_->raw()->data[1]);
+    program_->setUniformValue("texU", 1);
+
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, textures_[2]);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tex_width_ / 2, tex_height_ / 2, GL_RED, GL_UNSIGNED_BYTE, current_frame_->raw()->data[2]);
+    program_->setUniformValue("texV", 2);
+
+    if (matrix_uniform_loc_ >= 0)
+    {
+        program_->setUniformValue(matrix_uniform_loc_, color_matrix_);
+    }
+
+    static const GLfloat vertices[] = {-1.0F, -1.0F, 1.0F, -1.0F, -1.0F, 1.0F, 1.0F, 1.0F};
+    static const GLfloat texCoords[] = {0.0F, 1.0F, 1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F};
+
+    const int posLoc = program_->attributeLocation("position");
+    program_->enableAttributeArray(posLoc);
+    program_->setAttributeArray(posLoc, vertices, 2);
+
+    const int texLoc = program_->attributeLocation("texCoord");
+    program_->enableAttributeArray(texLoc);
+    program_->setAttributeArray(texLoc, texCoords, 2);
+
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    program_->disableAttributeArray(posLoc);
+    program_->disableAttributeArray(texLoc);
+    program_->release();
 }
 
-void video_widget::init_textures(int width, int height, int format)
+void video_widget::update_color_matrix(const AVFrame *frame)
 {
-    for (auto &t : tex_)
+    AVColorSpace space = frame->colorspace;
+    AVColorRange range = frame->color_range;
+    const int width = frame->width;
+    const int height = frame->height;
+
+    if (space == AVCOL_SPC_UNSPECIFIED)
     {
-        t.reset();
+        if (width >= 1280 || height >= 720)
+        {
+            space = AVCOL_SPC_BT709;
+        }
+        else
+        {
+            space = AVCOL_SPC_BT470BG;
+        }
     }
 
-    tex_width_ = width;
-    tex_height_ = height;
-    tex_format_ = format;
-
-    auto create_tex = [&](int idx, int w, int h, QOpenGLTexture::TextureFormat internal_fmt, QOpenGLTexture::PixelFormat pixel_fmt)
+    if (range == AVCOL_RANGE_UNSPECIFIED)
     {
-        tex_[idx] = std::make_unique<QOpenGLTexture>(QOpenGLTexture::Target2D);
-        tex_[idx]->setSize(w, h);
-        tex_[idx]->setFormat(internal_fmt);
-        tex_[idx]->allocateStorage(pixel_fmt, QOpenGLTexture::UInt8);
-        tex_[idx]->setMinMagFilters(QOpenGLTexture::Linear, QOpenGLTexture::Linear);
-        tex_[idx]->setWrapMode(QOpenGLTexture::ClampToEdge);
-    };
-
-    if (format == 0)
-    {
-        create_tex(0, width, height, QOpenGLTexture::R8_UNorm, QOpenGLTexture::Red);
-        create_tex(1, width / 2, height / 2, QOpenGLTexture::R8_UNorm, QOpenGLTexture::Red);
-        create_tex(2, width / 2, height / 2, QOpenGLTexture::R8_UNorm, QOpenGLTexture::Red);
-    }
-    else if (format == 1)
-    {
-        create_tex(0, width, height, QOpenGLTexture::R8_UNorm, QOpenGLTexture::Red);
-        create_tex(1, width / 2, height / 2, QOpenGLTexture::RG8_UNorm, QOpenGLTexture::RG);
+        range = AVCOL_RANGE_MPEG;
     }
 
-    texture_alloced_ = true;
+    if (space == current_color_space_ && range == current_color_range_)
+    {
+        return;
+    }
+
+    current_color_space_ = space;
+    current_color_range_ = range;
+    LOG_INFO("video widget updating color matrix space {} range {}", av_color_space_name(space), av_color_range_name(range));
+    color_matrix_ = get_color_matrix(space, range);
+}
+
+QMatrix4x4 video_widget::get_color_matrix(AVColorSpace space, AVColorRange range)
+{
+    QMatrix4x4 mat;
+
+    float kr = 0.299F;
+    float kb = 0.114F;
+
+    if (space == AVCOL_SPC_BT709)
+    {
+        kr = 0.2126F;
+        kb = 0.0722F;
+    }
+    else if (space == AVCOL_SPC_BT2020_NCL || space == AVCOL_SPC_BT2020_CL)
+    {
+        kr = 0.2627F;
+        kb = 0.0593F;
+    }
+
+    const float kg = 1.0F - kr - kb;
+
+    float y_off = 0.0F;
+    float uv_off = 0.5F;
+    float y_scale = 1.0F;
+    float uv_scale = 1.0F;
+
+    if (range == AVCOL_RANGE_MPEG)
+    {
+        y_off = 16.0F / 255.0F;
+        uv_off = 128.0F / 255.0F;
+        y_scale = 255.0F / (235.0F - 16.0F);
+        uv_scale = 255.0F / (240.0F - 16.0F);
+    }
+
+    const float r_v = 2.0F * (1.0F - kr);
+    const float b_u = 2.0F * (1.0F - kb);
+    const float g_u = -(b_u * kb) / kg;
+    const float g_v = -(r_v * kr) / kg;
+
+    const float r_y_coeff = y_scale;
+    const float r_v_coeff = r_v * uv_scale;
+    const float r_const = -(y_scale * y_off) - (r_v * uv_scale * uv_off);
+
+    const float g_y_coeff = y_scale;
+    const float g_u_coeff = g_u * uv_scale;
+    const float g_v_coeff = g_v * uv_scale;
+    const float g_const = -(y_scale * y_off) - (g_u * uv_scale * uv_off) - (g_v * uv_scale * uv_off);
+
+    const float b_y_coeff = y_scale;
+    const float b_u_coeff = b_u * uv_scale;
+    const float b_const = -(y_scale * y_off) - (b_u * uv_scale * uv_off);
+
+    mat.setRow(0, QVector4D(r_y_coeff, 0.0F, r_v_coeff, r_const));
+    mat.setRow(1, QVector4D(g_y_coeff, g_u_coeff, g_v_coeff, g_const));
+    mat.setRow(2, QVector4D(b_y_coeff, b_u_coeff, 0.0F, b_const));
+    mat.setRow(3, QVector4D(0.0F, 0.0F, 0.0F, 1.0F));
+
+    return mat;
 }

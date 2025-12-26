@@ -1,55 +1,56 @@
 #ifndef VIDEO_WIDGET_H
 #define VIDEO_WIDGET_H
 
+#include <memory>
+#include <utility>
 #include <QOpenGLWidget>
 #include <QOpenGLFunctions>
 #include <QOpenGLShaderProgram>
 #include <QOpenGLTexture>
-#include <QOpenGLBuffer>
-#include <memory>
-#include <mutex>
+#include <QMatrix4x4>
+#include "media_objects.h"
 
 extern "C"
 {
-#include <libavutil/frame.h>
+#include <libavutil/pixfmt.h>
+#include "libavutil/pixdesc.h"
 }
 
 class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
 {
     Q_OBJECT
+
    public:
-    explicit video_widget(QWidget* parent = nullptr);
+    explicit video_widget(QWidget *parent = nullptr);
     ~video_widget() override;
 
+   public:
+    void clear();
+
    public slots:
-    void update_frame(AVFrame* frame);
+    void on_frame_ready(std::shared_ptr<media_frame> frame);
 
    protected:
     void initializeGL() override;
-    void paintGL() override;
     void resizeGL(int w, int h) override;
+    void paintGL() override;
 
    private:
-    void init_shader();
-    void init_textures(int width, int height, int format);
-    void upload_texture(AVFrame* frame);
+    void update_color_matrix(const AVFrame *frame);
+    static QMatrix4x4 get_color_matrix(AVColorSpace space, AVColorRange range);
 
    private:
-    AVFrame* current_frame_ = nullptr;
-    AVFrame* sw_frame_ = nullptr;
-    std::mutex frame_mutex_;
-
-    bool texture_alloced_ = false;
     int tex_width_ = 0;
     int tex_height_ = 0;
-    int tex_format_ = -1;
+    GLuint textures_[3] = {0, 0, 0};
+    bool texture_inited_ = false;
+    QOpenGLShaderProgram *program_ = nullptr;
+    std::shared_ptr<media_frame> current_frame_ = nullptr;
 
-    std::unique_ptr<QOpenGLShaderProgram> program_;
-    std::unique_ptr<QOpenGLTexture> tex_[3];
-    QOpenGLBuffer vbo_;
-
-    QOpenGLBuffer pbo_[2][3];
-    int pbo_index_ = 0;
+    AVColorSpace current_color_space_ = AVCOL_SPC_UNSPECIFIED;
+    AVColorRange current_color_range_ = AVCOL_RANGE_UNSPECIFIED;
+    QMatrix4x4 color_matrix_;
+    int matrix_uniform_loc_ = -1;
 };
 
 #endif

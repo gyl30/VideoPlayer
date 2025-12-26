@@ -1,5 +1,5 @@
-#ifndef PLAYER_SCOPED_EXIT_H
-#define PLAYER_SCOPED_EXIT_H
+#ifndef TXTREADER_SCOPED_EXIT_H
+#define TXTREADER_SCOPED_EXIT_H
 
 #include <utility>
 
@@ -31,6 +31,8 @@ class scoped_exit
         }
     }
 
+    scoped_exit& operator=(scoped_exit&& mv) = delete;
+
     void cancel() { canceled = true; }
 
    private:
@@ -43,10 +45,9 @@ scoped_exit<Callback> make_scoped_exit(Callback&& c)
 {
     return scoped_exit<Callback>(std::forward<Callback>(c));
 }
-
 #define SCOPED_CONCAT_(x, y) x##y
 #define SCOPED_CONCAT(x, y) SCOPED_CONCAT_(x, y)
 #define SCOPED_UNIQUE_NAME(prefix) SCOPED_CONCAT(prefix, __LINE__)
 #define DEFER(code) auto SCOPED_UNIQUE_NAME(scoped) = make_scoped_exit([&]() { code; })
 
-#endif    // PLAYER_SCOPED_EXIT_H
+#endif

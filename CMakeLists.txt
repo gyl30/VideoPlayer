@@ -37,11 +37,12 @@ endif()
 set(HARDENING_FLAGS_COMMON
     -Wall -Wformat -Wformat=2 -Wconversion -Wimplicit-fallthrough
     -Werror=format-security
-    -fstack-clash-protection -fstack-protector-strong
+    -fstack-protector-strong
 )
 
 if(UNIX AND NOT APPLE)
     list(APPEND HARDENING_FLAGS_COMMON
+        -fstack-clash-protection
         -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3
         -fPIE
     )
@@ -95,7 +96,6 @@ set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGLWidgets OpenGL)
 find_package(SDL2 REQUIRED)
-find_package(spdlog REQUIRED)
 find_package(PkgConfig REQUIRED)
 
 pkg_check_modules(FFMPEG REQUIRED 
@@ -109,16 +109,21 @@ pkg_check_modules(FFMPEG REQUIRED
 add_executable(VideoPlayer
     log.cpp
     main.cpp
-    mainwindow.cpp
-    audio_output.cpp
-    video_decoder.cpp
+    demuxer.cpp
+    decoder.cpp
+    av_clock.cpp
     video_widget.cpp
-    decoder_backend.cpp
+    video_scaler.cpp
+    main_window.cpp 
+    audio_resampler.cpp
+    sdl_audio_backend.cpp
+    video_sync_thread.cpp
 )
 
 target_compile_options(VideoPlayer PRIVATE
     ${HARDENING_FLAGS_COMMON}
     $<$<CONFIG:Release,RelWithDebInfo>:${HARDENING_FLAGS_PRODUCTION}>
+    -isystem /usr/local/include
 )
 
 target_link_options(VideoPlayer PRIVATE
@@ -131,8 +136,9 @@ if(SANITIZER_COMPILE_FLAGS)
 endif()
 
 target_include_directories(VideoPlayer SYSTEM PRIVATE
-    ${SDL2_INCLUDE_DIRS}
     ${FFMPEG_INCLUDE_DIRS}
+    ${SDL2_INCLUDE_DIRS}
+    third/spdlog/include
 )
 
 target_link_directories(VideoPlayer PRIVATE
@@ -144,14 +150,5 @@ target_link_libraries(VideoPlayer PRIVATE
     Qt6::OpenGLWidgets
     Qt6::OpenGL
     SDL2::SDL2
-    spdlog::spdlog
     ${FFMPEG_LIBRARIES}
 )
-
-if(WIN32)
-    set_target_properties(VideoPlayer PROPERTIES WIN32_EXECUTABLE TRUE)
-endif()
-
-if(APPLE)
-    set_target_properties(VideoPlayer PROPERTIES MACOSX_BUNDLE TRUE)
-endif()
