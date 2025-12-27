@@ -19,12 +19,14 @@ class decoder
               const std::string &name);
 
     void run();
+    void stop();
 
    private:
     std::string name_;
     AVCodecContext *codec_ctx_ = nullptr;
     safe_queue<std::shared_ptr<media_frame>> *frame_queue_ = nullptr;
     safe_queue<std::shared_ptr<media_packet>> *packet_queue_ = nullptr;
+    std::atomic<bool> aborted_{false};
 };
 
 #endif

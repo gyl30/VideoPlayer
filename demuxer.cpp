@@ -1,6 +1,6 @@
 #include <thread>
-#include "demuxer.h"
 #include "log.h"
+#include "demuxer.h"
 
 demuxer::~demuxer()
 {
@@ -70,6 +70,15 @@ void demuxer::seek(double seconds)
         audio_queue_->add_serial();
     }
     seek_req_.store(seconds);
+
+    if (video_queue_ != nullptr)
+    {
+        video_queue_->abort();
+    }
+    if (audio_queue_ != nullptr)
+    {
+        audio_queue_->abort();
+    }
 }
 
 bool demuxer::open(const std::string &url, safe_queue<std::shared_ptr<media_packet>> *v_q, safe_queue<std::shared_ptr<media_packet>> *a_q)
@@ -136,6 +145,16 @@ void demuxer::run()
             else
             {
                 LOG_INFO("demuxer seek success clearing queues");
+
+                if (video_queue_ != nullptr)
+                {
+                    video_queue_->reset();
+                }
+                if (audio_queue_ != nullptr)
+                {
+                    audio_queue_->reset();
+                }
+
                 if (video_queue_ != nullptr)
                 {
                     video_queue_->clear();
@@ -189,6 +208,10 @@ void demuxer::run()
             pkt->set_serial(video_queue_->serial());
             if (!video_queue_->push(pkt))
             {
+                if (seek_req_.load() >= 0.0)
+                {
+                    continue;
+                }
                 LOG_INFO("demuxer video queue push failed");
                 break;
             }
@@ -198,6 +221,10 @@ void demuxer::run()
             pkt->set_serial(audio_queue_->serial());
             if (!audio_queue_->push(pkt))
             {
+                if (seek_req_.load() >= 0.0)
+                {
+                    continue;
+                }
                 LOG_INFO("demuxer audio queue push failed");
                 break;
             }

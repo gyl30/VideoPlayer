@@ -66,6 +66,8 @@ class safe_queue
         cond_not_full_.notify_all();
     }
 
+    void reset() { abort_flag_.store(false); }
+
     [[nodiscard]] size_t size()
     {
         std::lock_guard<std::mutex> lock(mutex_);

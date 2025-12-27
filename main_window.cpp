@@ -346,6 +346,15 @@ void main_window::stop_play()
     ui_timer_->stop();
 
     LOG_INFO("aborting queues");
+    if (video_decoder_ != nullptr)
+    {
+        video_decoder_->stop();
+    }
+    if (audio_decoder_ != nullptr)
+    {
+        audio_decoder_->stop();
+    }
+
     if (video_pkt_queue_ != nullptr)
     {
         video_pkt_queue_->abort();

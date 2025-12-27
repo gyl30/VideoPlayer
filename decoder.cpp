@@ -1,14 +1,17 @@
-#include "decoder.h"
 #include "log.h"
+#include "decoder.h"
 
 decoder::~decoder()
 {
     LOG_INFO("decoder destroying name {}", name_);
+    stop();
     if (codec_ctx_ != nullptr)
     {
         avcodec_free_context(&codec_ctx_);
     }
 }
+
+void decoder::stop() { aborted_.store(true); }
 
 bool decoder::open(const AVCodecParameters *par,
                    safe_queue<std::shared_ptr<media_packet>> *packet_queue,
@@ -63,12 +66,18 @@ void decoder::run()
     std::shared_ptr<media_packet> pkt;
     int current_serial = 0;
 
-    while (true)
+    aborted_.store(false);
+
+    while (!aborted_.load())
     {
         if (!packet_queue_->pop(pkt))
         {
-            LOG_INFO("decoder packet queue popped false exiting name {}", name_);
-            break;
+            if (aborted_.load())
+            {
+                LOG_INFO("decoder packet queue popped false exiting name {}", name_);
+                break;
+            }
+            continue;
         }
 
         if (pkt != nullptr)
@@ -120,8 +129,11 @@ void decoder::run()
             {
                 if (!frame_queue_->push(frame))
                 {
-                    LOG_INFO("decoder frame queue push failed exiting name {}", name_);
-                    goto end_loop;
+                    if (aborted_.load())
+                    {
+                        LOG_INFO("decoder frame queue push failed exiting name {}", name_);
+                        goto end_loop;
+                    }
                 }
             }
         }
