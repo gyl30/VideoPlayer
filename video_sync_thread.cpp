@@ -1,5 +1,5 @@
-#include "video_sync_thread.h"
 #include "log.h"
+#include "video_sync_thread.h"
 
 video_sync_thread::video_sync_thread(safe_queue<std::shared_ptr<media_frame>> *frame_queue,
                                      safe_queue<std::shared_ptr<media_packet>> *packet_queue,
@@ -61,7 +61,6 @@ void video_sync_thread::run()
         }
 
         const double pts = static_cast<double>(frame->raw()->pts) * av_q2d(time_base_);
-        bool drop_old_frame = false;
 
         while (!stop_ && !isInterruptionRequested())
         {
@@ -71,15 +70,15 @@ void video_sync_thread::run()
                 continue;
             }
 
-            const double master_clock = clock_->get();
-            const double diff = pts - master_clock;
-
-            if (diff > 10.0)
+            if (clock_->serial() != frame->serial())
             {
-                LOG_WARN("clock reset detected (diff {:.3f}), discarding old frame pts {:.3f}", diff, pts);
-                drop_old_frame = true;
+                LOG_WARN("serial mismatch (clock: {}, frame: {}), forcing clock sync to video pts {:.3f}", clock_->serial(), frame->serial(), pts);
+                clock_->set(pts, frame->serial());
                 break;
             }
+
+            const double master_clock = clock_->get();
+            const double diff = pts - master_clock;
 
             LOG_TRACE("video pts {:.3f} raw pts {} master clock {:.3f} diff {:.3f}", pts, frame->raw()->pts, master_clock, diff);
             if (diff > 0.01)
@@ -100,11 +99,6 @@ void video_sync_thread::run()
         if (stop_ || isInterruptionRequested())
         {
             break;
-        }
-
-        if (drop_old_frame)
-        {
-            continue;
         }
 
         const double final_diff = pts - clock_->get();

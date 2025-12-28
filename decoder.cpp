@@ -1,5 +1,7 @@
-#include "log.h"
 #include "decoder.h"
+#include "log.h"
+#include <thread>
+#include <chrono>
 
 decoder::~decoder()
 {
@@ -77,6 +79,7 @@ void decoder::run()
                 LOG_INFO("decoder packet queue popped false exiting name {}", name_);
                 break;
             }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
 
@@ -105,7 +108,7 @@ void decoder::run()
         if (ret < 0)
         {
             LOG_ERROR("decoder avcodec send packet failed code {} name {}", ret, name_);
-            break;
+            continue;
         }
 
         while (ret >= 0)
@@ -140,8 +143,7 @@ void decoder::run()
 
         if (raw_pkt == nullptr)
         {
-            LOG_INFO("decoder received null packet finishing name {}", name_);
-            break;
+            LOG_INFO("decoder finished draining, waiting for next command name {}", name_);
         }
     }
 

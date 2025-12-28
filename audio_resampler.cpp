@@ -10,8 +10,7 @@ extern "C"
 audio_resampler::audio_resampler()
 {
     LOG_INFO("audio resampler constructed");
-    in_ch_layout_ = {};
-    in_ch_layout_.order = AV_CHANNEL_ORDER_UNSPEC;
+    av_channel_layout_default(&in_ch_layout_, 0);
 }
 
 audio_resampler::~audio_resampler()

@@ -1,6 +1,6 @@
 #include <thread>
-#include "log.h"
 #include "demuxer.h"
+#include "log.h"
 
 demuxer::~demuxer()
 {
@@ -127,6 +127,8 @@ void demuxer::run()
 
     LOG_INFO("demuxer loop started");
 
+    bool eof_reached = false;
+
     while (!abort_.load())
     {
         const double target = seek_req_.exchange(-1.0);
@@ -134,10 +136,11 @@ void demuxer::run()
         {
             LOG_INFO("demuxer performing seek to {}", target);
             const auto seek_target = static_cast<int64_t>(target * AV_TIME_BASE);
-            const int64_t seek_min = INT64_MIN;
-            const int64_t seek_max = seek_target;
 
-            const int ret = avformat_seek_file(fmt_ctx_, -1, seek_min, seek_target, seek_max, 0);
+            const int64_t seek_min = INT64_MIN;
+            const int64_t seek_max = INT64_MAX;
+
+            const int ret = avformat_seek_file(fmt_ctx_, -1, seek_min, seek_target, seek_max, AVSEEK_FLAG_BACKWARD);
             if (ret < 0)
             {
                 LOG_ERROR("demuxer seek failed code {}", ret);
@@ -181,7 +184,15 @@ void demuxer::run()
                 {
                     seek_cb_(target);
                 }
+
+                eof_reached = false;
             }
+        }
+
+        if (eof_reached)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
         }
 
         auto pkt = std::make_shared<media_packet>();
@@ -191,7 +202,18 @@ void demuxer::run()
             if (ret == AVERROR_EOF)
             {
                 LOG_INFO("demuxer reached end of file");
-                break;
+                eof_reached = true;
+
+                if (video_queue_ != nullptr)
+                {
+                    video_queue_->push(nullptr);
+                }
+                if (audio_queue_ != nullptr)
+                {
+                    audio_queue_->push(nullptr);
+                }
+
+                continue;
             }
 
             if (abort_.load())
@@ -200,7 +222,8 @@ void demuxer::run()
                 break;
             }
             LOG_ERROR("demuxer read frame failed code {}", ret);
-            break;
+            eof_reached = true;
+            continue;
         }
 
         if (pkt->raw()->stream_index == video_index_ && video_queue_ != nullptr)
@@ -231,14 +254,5 @@ void demuxer::run()
         }
     }
 
-    LOG_INFO("demuxer loop ending pushing null packets");
-
-    if (video_queue_ != nullptr)
-    {
-        video_queue_->push(nullptr);
-    }
-    if (audio_queue_ != nullptr)
-    {
-        audio_queue_->push(nullptr);
-    }
+    LOG_INFO("demuxer loop ending");
 }

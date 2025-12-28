@@ -9,8 +9,9 @@ class av_clock
     av_clock();
 
    public:
-    void set(double p);
+    void set(double p, int serial);
     [[nodiscard]] double get() const;
+    [[nodiscard]] int serial() const;
     void pause();
     void resume();
 
@@ -22,6 +23,8 @@ class av_clock
     std::atomic<double> pts_{0.0};
     std::atomic<bool> paused_{false};
     std::atomic<double> last_updated_{0.0};
+
+    std::atomic<int> serial_{-1};
 };
 
 #endif

@@ -154,12 +154,12 @@ void sdl_audio_backend::audio_callback(Uint8 *stream, int len)
                 {
                     LOG_INFO("audio detected seek serial changed {} -> {} resetting clock to {:.3f}", last_serial_, current_frame_->serial(), pts);
                     last_serial_ = current_frame_->serial();
-                    clock_->set(pts);
+                    clock_->set(pts, current_frame_->serial());
                 }
                 else
                 {
                     LOG_TRACE("audio pts {:.3f} raw_pts {} updating clock", pts, current_frame_->raw()->pts);
-                    clock_->set(pts);
+                    clock_->set(pts, current_frame_->serial());
                 }
             }
 
@@ -167,22 +167,43 @@ void sdl_audio_backend::audio_callback(Uint8 *stream, int len)
             AVChannelLayout tgt_layout;
             av_channel_layout_default(&tgt_layout, 2);
 
-            resampler_.init(&tgt_layout,
-                            44100,
-                            AV_SAMPLE_FMT_S16,
-                            src_layout,
-                            current_frame_->raw()->sample_rate,
-                            static_cast<AVSampleFormat>(current_frame_->raw()->format));
+            bool init_ret = resampler_.init(&tgt_layout,
+                                            44100,
+                                            AV_SAMPLE_FMT_S16,
+                                            src_layout,
+                                            current_frame_->raw()->sample_rate,
+                                            static_cast<AVSampleFormat>(current_frame_->raw()->format));
             av_channel_layout_uninit(&tgt_layout);
+
+            if (!init_ret)
+            {
+                LOG_ERROR("audio resampler init failed");
+                current_frame_ = nullptr;
+                current_frame_size_ = 0;
+                continue;
+            }
 
             const int out_samples =
                 static_cast<int>(av_rescale_rnd(current_frame_->raw()->nb_samples, 44100, current_frame_->raw()->sample_rate, AV_ROUND_UP));
 
+            int required_bytes = out_samples * 2 * 2;
+            if (required_bytes > audio_buf_size_)
+            {
+                LOG_WARN("sdl audio buffer resize from {} to {}", audio_buf_size_, required_bytes * 2);
+                if (audio_buf_ != nullptr)
+                {
+                    av_free(audio_buf_);
+                }
+                audio_buf_size_ = required_bytes * 2;
+                audio_buf_ = static_cast<uint8_t *>(av_malloc(audio_buf_size_));
+            }
+
             const int samples_converted = resampler_.convert(&audio_buf_, out_samples, current_frame_->raw());
 
-            if (samples_converted < 0)
+            if (samples_converted <= 0)
             {
-                LOG_ERROR("audio resampler convert failed code {}", samples_converted);
+                LOG_ERROR("audio resampler convert failed or empty code {}", samples_converted);
+                current_frame_ = nullptr;
                 current_frame_size_ = 0;
                 continue;
             }
