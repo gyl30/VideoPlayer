@@ -76,9 +76,15 @@ class main_window : public QMainWindow
     void update_media_title_text();
     void on_title_scroll_tick();
     void update_volume_icon(int value);
+    bool is_video_fullscreen() const;
+    void enter_video_fullscreen();
+    void exit_video_fullscreen();
 
    private:
     video_widget *video_widget_ = nullptr;
+    QVBoxLayout *video_frame_layout_ = nullptr;
+    QWidget *video_fullscreen_window_ = nullptr;
+    QVBoxLayout *video_fullscreen_layout_ = nullptr;
 
     QWidget *title_bar_ = nullptr;
     QWidget *title_drag_area_ = nullptr;

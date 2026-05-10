@@ -127,15 +127,15 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 
     video_frame_ = new QFrame(this);
     video_frame_->setObjectName("videoFrame");
-    auto *video_layout = new QVBoxLayout(video_frame_);
-    video_layout->setContentsMargins(0, 0, 0, 0);
-    video_layout->setSpacing(0);
+    video_frame_layout_ = new QVBoxLayout(video_frame_);
+    video_frame_layout_->setContentsMargins(0, 0, 0, 0);
+    video_frame_layout_->setSpacing(0);
 
     video_widget_ = new video_widget(video_frame_);
     video_widget_->setObjectName("videoSurface");
     video_widget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     video_widget_->setContextMenuPolicy(Qt::CustomContextMenu);
-    video_layout->addWidget(video_widget_, 1);
+    video_frame_layout_->addWidget(video_widget_, 1);
     content_layout->addWidget(video_frame_, 1);
 
     playlist_panel_ = new QFrame(this);
@@ -306,7 +306,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
             {
                 QMenu menu(this);
                 QAction *open_action = menu.addAction("打开");
-                QAction *fullscreen_action = menu.addAction(isFullScreen() ? "退出全屏" : "全屏");
+                QAction *fullscreen_action = menu.addAction(is_video_fullscreen() ? "退出全屏" : "全屏");
                 QAction *chosen = menu.exec(video_widget_->mapToGlobal(pos));
                 if (chosen == open_action)
                 {
@@ -641,6 +641,59 @@ bool main_window::eventFilter(QObject *watched, QEvent *event)
         }
     }
 
+    if (watched == video_fullscreen_window_)
+    {
+        if (event->type() == QEvent::KeyPress)
+        {
+            auto *key_event = static_cast<QKeyEvent *>(event);
+            if (key_event->matches(QKeySequence::Open))
+            {
+                LOG_INFO("key open shortcut pressed in video fullscreen");
+                on_open_file();
+                return true;
+            }
+            if (key_event->key() == Qt::Key_F11)
+            {
+                LOG_INFO("key fullscreen shortcut pressed in video fullscreen");
+                on_toggle_fullscreen();
+                return true;
+            }
+            if (key_event->key() == Qt::Key_Left)
+            {
+                LOG_INFO("key left pressed in video fullscreen");
+                do_seek_relative(-15.0);
+                return true;
+            }
+            if (key_event->key() == Qt::Key_Right)
+            {
+                LOG_INFO("key right pressed in video fullscreen");
+                do_seek_relative(15.0);
+                return true;
+            }
+            if (key_event->key() == Qt::Key_Space)
+            {
+                LOG_INFO("key space pressed in video fullscreen");
+                on_toggle_pause();
+                return true;
+            }
+            if (key_event->key() == Qt::Key_Escape)
+            {
+                LOG_INFO("key escape pressed in video fullscreen");
+                on_toggle_fullscreen();
+                return true;
+            }
+        }
+
+        if (event->type() == QEvent::Close)
+        {
+            LOG_INFO("video fullscreen close event intercepted");
+            exit_video_fullscreen();
+            return true;
+        }
+
+        return QMainWindow::eventFilter(watched, event);
+    }
+
     if (watched != title_drag_area_ && watched != title_bar_)
     {
         return QMainWindow::eventFilter(watched, event);
@@ -741,7 +794,7 @@ void main_window::keyPressEvent(QKeyEvent *event)
         LOG_INFO("key space pressed");
         on_toggle_pause();
     }
-    else if (event->key() == Qt::Key_Escape && isFullScreen())
+    else if (event->key() == Qt::Key_Escape && is_video_fullscreen())
     {
         LOG_INFO("key escape pressed in fullscreen");
         on_toggle_fullscreen();
@@ -754,7 +807,7 @@ void main_window::keyPressEvent(QKeyEvent *event)
 
 void main_window::toggle_window_maximized()
 {
-    if (isFullScreen())
+    if (is_video_fullscreen())
     {
         return;
     }
@@ -846,6 +899,64 @@ void main_window::update_volume_icon(int value)
     }
 
     lbl_vol_icon_low_->setPixmap(QIcon(":/icons/volume-up.svg").pixmap(16, 16));
+}
+
+bool main_window::is_video_fullscreen() const
+{
+    return video_fullscreen_window_ != nullptr && video_fullscreen_window_->isVisible();
+}
+
+void main_window::enter_video_fullscreen()
+{
+    if (video_widget_ == nullptr || video_frame_layout_ == nullptr || is_video_fullscreen())
+    {
+        return;
+    }
+
+    if (video_fullscreen_window_ == nullptr)
+    {
+        video_fullscreen_window_ = new QWidget(this, Qt::Window | Qt::FramelessWindowHint);
+        video_fullscreen_window_->setObjectName("videoFullscreenWindow");
+        video_fullscreen_window_->setFocusPolicy(Qt::StrongFocus);
+        video_fullscreen_window_->setWindowTitle(this->windowTitle());
+        video_fullscreen_window_->setWindowIcon(this->windowIcon());
+        video_fullscreen_window_->setStyleSheet("background: #000000;");
+        video_fullscreen_window_->installEventFilter(this);
+
+        video_fullscreen_layout_ = new QVBoxLayout(video_fullscreen_window_);
+        video_fullscreen_layout_->setContentsMargins(0, 0, 0, 0);
+        video_fullscreen_layout_->setSpacing(0);
+    }
+
+    video_frame_layout_->removeWidget(video_widget_);
+    video_widget_->setParent(video_fullscreen_window_);
+    video_fullscreen_layout_->addWidget(video_widget_, 1);
+    video_widget_->show();
+
+    video_fullscreen_window_->showFullScreen();
+    video_fullscreen_window_->activateWindow();
+    video_fullscreen_window_->raise();
+    video_fullscreen_window_->setFocus();
+}
+
+void main_window::exit_video_fullscreen()
+{
+    if (video_widget_ == nullptr || video_frame_layout_ == nullptr || video_fullscreen_window_ == nullptr ||
+        video_fullscreen_layout_ == nullptr)
+    {
+        return;
+    }
+
+    video_fullscreen_layout_->removeWidget(video_widget_);
+    video_widget_->setParent(video_frame_);
+    video_frame_layout_->addWidget(video_widget_, 1);
+    video_widget_->show();
+
+    video_fullscreen_window_->hide();
+    this->show();
+    this->activateWindow();
+    this->raise();
+    this->setFocus();
 }
 
 void main_window::on_open_file()
@@ -945,18 +1056,7 @@ void main_window::on_stop_pressed()
 void main_window::on_toggle_fullscreen()
 {
     LOG_INFO("toggle fullscreen");
-    if (isFullScreen())
-    {
-        showNormal();
-        control_panel_->show();
-        title_bar_->show();
-        update_title_maximize_button();
-    }
-    else
-    {
-        showFullScreen();
-        title_bar_->hide();
-    }
+    is_video_fullscreen() ? exit_video_fullscreen() : enter_video_fullscreen();
 }
 
 void main_window::on_toggle_playlist()
