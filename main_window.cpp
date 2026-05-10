@@ -97,19 +97,22 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     title_button_layout->setContentsMargins(0, 0, 0, 0);
     title_button_layout->setSpacing(0);
 
-    btn_title_minimize_ = new QPushButton("−", this);
+    btn_title_minimize_ = new QPushButton(QIcon(":/icons/title-minimize.svg"), QString(), this);
     btn_title_minimize_->setObjectName("windowButton");
     btn_title_minimize_->setCursor(Qt::PointingHandCursor);
+    btn_title_minimize_->setIconSize(QSize(14, 14));
     btn_title_minimize_->setToolTip("最小化");
 
-    btn_title_maximize_ = new QPushButton("□", this);
+    btn_title_maximize_ = new QPushButton(QIcon(":/icons/title-maximize.svg"), QString(), this);
     btn_title_maximize_->setObjectName("windowButton");
     btn_title_maximize_->setCursor(Qt::PointingHandCursor);
+    btn_title_maximize_->setIconSize(QSize(14, 14));
     btn_title_maximize_->setToolTip("最大化");
 
-    btn_title_close_ = new QPushButton("×", this);
+    btn_title_close_ = new QPushButton(QIcon(":/icons/title-close.svg"), QString(), this);
     btn_title_close_->setObjectName("closeButton");
     btn_title_close_->setCursor(Qt::PointingHandCursor);
+    btn_title_close_->setIconSize(QSize(14, 14));
     btn_title_close_->setToolTip("关闭");
 
     title_button_layout->addWidget(btn_title_minimize_);
@@ -828,7 +831,7 @@ void main_window::update_title_maximize_button()
         return;
     }
 
-    btn_title_maximize_->setText(isMaximized() ? "❐" : "□");
+    btn_title_maximize_->setIcon(QIcon(isMaximized() ? ":/icons/title-restore.svg" : ":/icons/title-maximize.svg"));
     btn_title_maximize_->setToolTip(isMaximized() ? "还原" : "最大化");
 }
 

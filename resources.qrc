@@ -6,6 +6,10 @@
     <file alias="icons/next.svg">icons/next.svg</file>
     <file alias="icons/previous.svg">icons/previous.svg</file>
     <file alias="icons/app_icon.svg">icons/app_icon.svg</file>
+    <file alias="icons/title-minimize.svg">icons/title-minimize.svg</file>
+    <file alias="icons/title-maximize.svg">icons/title-maximize.svg</file>
+    <file alias="icons/title-restore.svg">icons/title-restore.svg</file>
+    <file alias="icons/title-close.svg">icons/title-close.svg</file>
     <file alias="icons/playlist.svg">icons/playlist.svg</file>
     <file alias="icons/volume-up.svg">icons/volume-up.svg</file>
     <file alias="icons/skip-backward-fill.svg">icons/skip-backward-fill.svg</file>
