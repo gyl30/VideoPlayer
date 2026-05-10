@@ -1,6 +1,7 @@
 #ifndef DECODER_H
 #define DECODER_H
 
+#include <string>
 #include "safe_queue.h"
 #include "media_objects.h"
 
