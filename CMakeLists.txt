@@ -115,6 +115,7 @@ add_executable(VideoPlayer
     video_widget.cpp
     video_scaler.cpp
     main_window.cpp 
+    volumemeter.cpp
     audio_resampler.cpp
     sdl_audio_backend.cpp
     video_sync_thread.cpp

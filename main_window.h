@@ -12,8 +12,14 @@
 #include <QPushButton>
 #include <QSlider>
 #include <QLabel>
+#include <QFrame>
+#include <QListWidget>
 #include <QTimer>
+#include <QEvent>
 #include <QKeyEvent>
+#include <QPoint>
+#include <QResizeEvent>
+#include <QString>
 #include <thread>
 #include <memory>
 #include <functional>
@@ -37,7 +43,9 @@ class main_window : public QMainWindow
 
    protected:
     void closeEvent(QCloseEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
    private slots:
     void on_open_file();
@@ -50,15 +58,39 @@ class main_window : public QMainWindow
     void on_slider_released();
     void on_volume_changed(int value);
     void on_toggle_fullscreen();
+    void on_toggle_playlist();
+    void on_play_previous();
+    void on_play_next();
+    void on_playlist_item_activated(QListWidgetItem *item);
 
    private:
     void stop_play();
     bool start_play(const std::string &filepath);
     void do_seek_relative(double seconds);
     void init_styles();
+    void toggle_window_maximized();
+    void update_title_maximize_button();
+    void play_playlist_row(int row);
+    void update_playlist_buttons();
+    void set_media_title_text(const QString &text);
+    void update_media_title_text();
+    void on_title_scroll_tick();
 
    private:
     video_widget *video_widget_ = nullptr;
+
+    QWidget *title_bar_ = nullptr;
+    QWidget *title_drag_area_ = nullptr;
+    QLabel *lbl_media_title_ = nullptr;
+    QPushButton *btn_title_minimize_ = nullptr;
+    QPushButton *btn_title_maximize_ = nullptr;
+    QPushButton *btn_title_close_ = nullptr;
+    QPushButton *btn_playlist_ = nullptr;
+
+    QFrame *video_frame_ = nullptr;
+    QFrame *playlist_panel_ = nullptr;
+    QListWidget *playlist_view_ = nullptr;
+    QLabel *lbl_playlist_count_ = nullptr;
 
     QWidget *control_panel_ = nullptr;
 
@@ -67,18 +99,23 @@ class main_window : public QMainWindow
     QPushButton *btn_forward_ = nullptr;
 
     QPushButton *btn_stop_ = nullptr;
-    QPushButton *btn_menu_ = nullptr;
 
     QSlider *slider_seek_ = nullptr;
     QLabel *lbl_time_ = nullptr;
 
     QLabel *lbl_vol_icon_low_ = nullptr;
-    QSlider *slider_volume_ = nullptr;
-    QLabel *lbl_vol_icon_high_ = nullptr;
-
-    QPushButton *btn_fullscreen_ = nullptr;
+    class volume_meter *volume_meter_ = nullptr;
 
     QTimer *ui_timer_ = nullptr;
+    QTimer *title_scroll_timer_ = nullptr;
+
+    bool dragging_title_bar_ = false;
+    QPoint drag_start_global_pos_;
+    QPoint drag_start_window_pos_;
+    int drag_press_window_x_ = 0;
+    QString current_media_path_;
+    QString media_title_full_text_ = "视频播放器";
+    int media_title_scroll_offset_ = 0;
 
     bool playing_ = false;
     bool paused_ = false;
