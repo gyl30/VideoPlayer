@@ -1,11 +1,13 @@
 #include <QDebug>
 #include <QAbstractItemView>
+#include <QAbstractButton>
 #include <QFileInfo>
 #include <QFontMetrics>
 #include <QIcon>
 #include <QKeySequence>
 #include <QMouseEvent>
 #include <QTime>
+#include <QToolTip>
 #include <QWindow>
 #include "log.h"
 #include "main_window.h"
@@ -61,11 +63,12 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     title_drag_layout->setContentsMargins(16, 0, 0, 0);
     title_drag_layout->setSpacing(10);
 
-    auto *app_badge = new QLabel("V", this);
+    auto *app_badge = new QLabel(this);
     app_badge->setObjectName("appBadge");
     app_badge->setAlignment(Qt::AlignCenter);
     app_badge->setFixedSize(30, 30);
     app_badge->setAttribute(Qt::WA_TransparentForMouseEvents);
+    app_badge->setPixmap(QIcon(":/icons/app_icon.svg").pixmap(26, 26));
     title_drag_layout->addWidget(app_badge);
 
     auto *app_title = new QLabel("视频播放器", this);
@@ -332,6 +335,15 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     update_volume_icon(volume_meter_->value());
     update_playlist_buttons();
 
+    for (auto *button : findChildren<QAbstractButton *>())
+    {
+        if (!button->toolTip().isEmpty())
+        {
+            button->setToolTipDuration(3000);
+            button->installEventFilter(this);
+        }
+    }
+
     LOG_INFO("main window constructed");
 }
 
@@ -355,11 +367,7 @@ void main_window::init_styles()
         "    background: transparent;"
         "}"
         "QLabel#appBadge {"
-        "    background: #67e8ff;"
-        "    color: #063452;"
-        "    border-radius: 15px;"
-        "    font-size: 18px;"
-        "    font-weight: 700;"
+        "    background: transparent;"
         "}"
         "QLabel#appTitle {"
         "    color: #f2f7fb;"
@@ -621,6 +629,18 @@ void main_window::closeEvent(QCloseEvent *event)
 
 bool main_window::eventFilter(QObject *watched, QEvent *event)
 {
+    if (auto *button = qobject_cast<QAbstractButton *>(watched); button != nullptr)
+    {
+        if (event->type() == QEvent::Enter && !button->toolTip().isEmpty())
+        {
+            QToolTip::showText(button->mapToGlobal(QPoint(button->width() / 2, button->height())), button->toolTip(), button);
+        }
+        else if (event->type() == QEvent::Leave)
+        {
+            QToolTip::hideText();
+        }
+    }
+
     if (watched != title_drag_area_ && watched != title_bar_)
     {
         return QMainWindow::eventFilter(watched, event);
@@ -886,6 +906,7 @@ void main_window::on_toggle_pause()
 {
     if (!playing_)
     {
+        play_playlist_row(playlist_view_->currentRow());
         return;
     }
     paused_ = !paused_;
@@ -1109,12 +1130,8 @@ void main_window::play_playlist_row(int row)
 
 void main_window::update_playlist_buttons()
 {
-    const int count = playlist_view_->count();
-    const bool has_items = count > 0 && !(count == 1 && playlist_view_->item(0)->data(Qt::UserRole).toString().isEmpty());
-    const int row = playlist_view_->currentRow();
-
-    btn_backward_->setEnabled(has_items && row > 0);
-    btn_forward_->setEnabled(has_items && row >= 0 && row + 1 < count);
+    btn_backward_->setEnabled(true);
+    btn_forward_->setEnabled(true);
     btn_playlist_->setEnabled(true);
 }
 
