@@ -76,17 +76,23 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     app_title->setAttribute(Qt::WA_TransparentForMouseEvents);
     title_drag_layout->addWidget(app_title);
 
-    title_drag_layout->addStretch(1);
+    title_drag_layout->addSpacing(18);
+
+    auto *media_title_wrap = new QWidget(title_drag_area_);
+    media_title_wrap->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    auto *media_title_layout = new QHBoxLayout(media_title_wrap);
+    media_title_layout->setContentsMargins(0, 0, 24, 0);
+    media_title_layout->setSpacing(0);
 
     lbl_media_title_ = new QLabel("视频播放器", this);
     lbl_media_title_->setObjectName("mediaTitle");
     lbl_media_title_->setAlignment(Qt::AlignCenter);
-    lbl_media_title_->setMinimumWidth(260);
-    lbl_media_title_->setMaximumWidth(1240);
+    lbl_media_title_->setMinimumWidth(0);
+    lbl_media_title_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     lbl_media_title_->setAttribute(Qt::WA_TransparentForMouseEvents);
-    title_drag_layout->addWidget(lbl_media_title_);
+    media_title_layout->addWidget(lbl_media_title_, 1);
 
-    title_drag_layout->addStretch(1);
+    title_drag_layout->addWidget(media_title_wrap, 1);
     title_layout->addWidget(title_drag_area_, 1);
 
     auto *title_button_box = new QWidget(title_bar_);
