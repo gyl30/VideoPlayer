@@ -76,6 +76,12 @@ class main_window : public QMainWindow
     void update_media_title_text();
     void on_title_scroll_tick();
     void update_volume_icon(int value);
+    void restore_persistent_state();
+    void save_persistent_state();
+    void save_playlist_state();
+    void save_volume_state(int value);
+    void save_current_playback_progress(bool force = false);
+    void restore_playback_progress(const QString &path);
     bool is_video_fullscreen() const;
     void enter_video_fullscreen();
     void exit_video_fullscreen();
@@ -123,6 +129,7 @@ class main_window : public QMainWindow
     QString current_media_path_;
     QString media_title_full_text_ = "视频播放器";
     int media_title_scroll_offset_ = 0;
+    int last_saved_progress_second_ = -1;
 
     bool playing_ = false;
     bool paused_ = false;

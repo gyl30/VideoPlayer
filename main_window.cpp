@@ -6,12 +6,30 @@
 #include <QIcon>
 #include <QKeySequence>
 #include <QMouseEvent>
+#include <QSettings>
 #include <QTime>
 #include <QToolTip>
+#include <QUrl>
 #include <QWindow>
 #include "log.h"
 #include "main_window.h"
 #include "volumemeter.h"
+
+namespace
+{
+constexpr const char *k_settings_org = "gyl30";
+constexpr const char *k_settings_app = "VideoPlayer";
+
+QString normalize_media_path(const QString &path)
+{
+    return QFileInfo(path).absoluteFilePath();
+}
+
+QString playback_position_key(const QString &path)
+{
+    return QStringLiteral("playback/positions/%1").arg(QString::fromLatin1(QUrl::toPercentEncoding(normalize_media_path(path))));
+}
+}  // namespace
 
 QString format_time(double seconds)
 {
@@ -309,7 +327,12 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 
     connect(btn_playlist_, &QPushButton::clicked, this, &main_window::on_toggle_playlist);
     connect(playlist_view_, &QListWidget::itemDoubleClicked, this, &main_window::on_playlist_item_activated);
-    connect(playlist_view_, &QListWidget::currentRowChanged, this, [this](int) { update_playlist_buttons(); });
+    connect(playlist_view_, &QListWidget::currentRowChanged, this,
+            [this](int)
+            {
+                update_playlist_buttons();
+                save_playlist_state();
+            });
     connect(video_widget_, &QWidget::customContextMenuRequested, this,
             [this](const QPoint &pos)
             {
@@ -341,7 +364,8 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     connect(title_scroll_timer_, &QTimer::timeout, this, &main_window::on_title_scroll_tick);
 
     set_media_title_text("视频播放器");
-    update_volume_icon(volume_meter_->value());
+    restore_persistent_state();
+    update_volume_icon(volume_meter_ != nullptr ? volume_meter_->value() : 80);
     update_playlist_buttons();
 
     for (auto *button : findChildren<QAbstractButton *>())
@@ -633,12 +657,14 @@ void main_window::init_styles()
 main_window::~main_window()
 {
     LOG_INFO("main window destroying");
+    save_persistent_state();
     stop_play();
 }
 
 void main_window::closeEvent(QCloseEvent *event)
 {
     LOG_INFO("main window close event triggered");
+    save_persistent_state();
     stop_play();
     QMainWindow::closeEvent(event);
 }
@@ -917,6 +943,155 @@ void main_window::update_volume_icon(int value)
     lbl_vol_icon_low_->setPixmap(QIcon(":/icons/volume-up.svg").pixmap(16, 16));
 }
 
+void main_window::restore_persistent_state()
+{
+    QSettings settings(k_settings_org, k_settings_app);
+
+    if (volume_meter_ != nullptr)
+    {
+        const int saved_volume = qBound(0, settings.value("audio/volume", volume_meter_->value()).toInt(), 100);
+        volume_meter_->setValue(saved_volume);
+    }
+
+    if (playlist_view_ == nullptr || lbl_playlist_count_ == nullptr)
+    {
+        return;
+    }
+
+    const QStringList saved_paths = settings.value("playlist/paths").toStringList();
+    playlist_view_->clear();
+
+    for (const QString &saved_path : saved_paths)
+    {
+        const QString normalized_path = normalize_media_path(saved_path);
+        if (normalized_path.isEmpty())
+        {
+            continue;
+        }
+
+        auto *item = new QListWidgetItem(QFileInfo(normalized_path).fileName(), playlist_view_);
+        item->setData(Qt::UserRole, normalized_path);
+        item->setToolTip(normalized_path);
+    }
+
+    if (playlist_view_->count() == 0)
+    {
+        playlist_view_->addItem("打开文件后显示在这里");
+        lbl_playlist_count_->setText("0 个文件");
+        return;
+    }
+
+    lbl_playlist_count_->setText(QString("%1 个文件").arg(playlist_view_->count()));
+
+    const int saved_row = settings.value("playlist/currentRow", 0).toInt();
+    playlist_view_->setCurrentRow(qBound(0, saved_row, playlist_view_->count() - 1));
+}
+
+void main_window::save_persistent_state()
+{
+    save_current_playback_progress(true);
+    save_playlist_state();
+    if (volume_meter_ != nullptr)
+    {
+        save_volume_state(volume_meter_->value());
+    }
+}
+
+void main_window::save_playlist_state()
+{
+    if (playlist_view_ == nullptr)
+    {
+        return;
+    }
+
+    QStringList playlist_paths;
+    for (int i = 0; i < playlist_view_->count(); ++i)
+    {
+        QListWidgetItem *item = playlist_view_->item(i);
+        if (item == nullptr)
+        {
+            continue;
+        }
+
+        const QString path = item->data(Qt::UserRole).toString();
+        if (!path.isEmpty())
+        {
+            playlist_paths.append(path);
+        }
+    }
+
+    QSettings settings(k_settings_org, k_settings_app);
+    settings.setValue("playlist/paths", playlist_paths);
+    settings.setValue("playlist/currentRow", playlist_paths.isEmpty() ? -1 : playlist_view_->currentRow());
+}
+
+void main_window::save_volume_state(int value)
+{
+    QSettings settings(k_settings_org, k_settings_app);
+    settings.setValue("audio/volume", qBound(0, value, 100));
+}
+
+void main_window::save_current_playback_progress(bool force)
+{
+    if (current_media_path_.isEmpty())
+    {
+        return;
+    }
+
+    double current = 0.0;
+    if (clock_ != nullptr)
+    {
+        current = clock_->get();
+    }
+    else if (slider_seek_ != nullptr)
+    {
+        current = static_cast<double>(slider_seek_->value());
+    }
+
+    int current_second = qMax(0, static_cast<int>(current));
+    if (duration_ > 1.0 && current >= duration_ - 2.0)
+    {
+        current_second = 0;
+    }
+
+    if (!force && current_second == last_saved_progress_second_)
+    {
+        return;
+    }
+
+    last_saved_progress_second_ = current_second;
+
+    QSettings settings(k_settings_org, k_settings_app);
+    settings.setValue(playback_position_key(current_media_path_), current_second);
+}
+
+void main_window::restore_playback_progress(const QString &path)
+{
+    if (demuxer_ == nullptr || slider_seek_ == nullptr || lbl_time_ == nullptr)
+    {
+        return;
+    }
+
+    QSettings settings(k_settings_org, k_settings_app);
+    const int saved_second = settings.value(playback_position_key(path), 0).toInt();
+    if (saved_second <= 0)
+    {
+        return;
+    }
+
+    if (duration_ > 1.0 && static_cast<double>(saved_second) >= duration_ - 2.0)
+    {
+        settings.setValue(playback_position_key(path), 0);
+        return;
+    }
+
+    LOG_INFO("restoring playback progress path {} second {}", path.toStdString(), saved_second);
+    last_saved_progress_second_ = saved_second;
+    slider_seek_->setValue(saved_second);
+    lbl_time_->setText(QString("%1 / %2").arg(format_time(static_cast<double>(saved_second)), format_time(duration_)));
+    demuxer_->seek(static_cast<double>(saved_second));
+}
+
 bool main_window::is_video_fullscreen() const
 {
     return video_fullscreen_window_ != nullptr && video_fullscreen_window_->isVisible();
@@ -997,11 +1172,12 @@ void main_window::on_open_file()
     int target_row = -1;
     for (const QString &filename : filenames)
     {
-        LOG_INFO("open file selected {}", filename.toStdString());
+        const QString normalized_path = normalize_media_path(filename);
+        LOG_INFO("open file selected {}", normalized_path.toStdString());
         int row = -1;
         for (int i = 0; i < playlist_view_->count(); ++i)
         {
-            if (playlist_view_->item(i)->data(Qt::UserRole).toString() == filename)
+            if (playlist_view_->item(i)->data(Qt::UserRole).toString() == normalized_path)
             {
                 row = i;
                 break;
@@ -1010,9 +1186,9 @@ void main_window::on_open_file()
 
         if (row < 0)
         {
-            auto *item = new QListWidgetItem(QFileInfo(filename).fileName(), playlist_view_);
-            item->setData(Qt::UserRole, filename);
-            item->setToolTip(filename);
+            auto *item = new QListWidgetItem(QFileInfo(normalized_path).fileName(), playlist_view_);
+            item->setData(Qt::UserRole, normalized_path);
+            item->setToolTip(normalized_path);
             row = playlist_view_->count() - 1;
         }
 
@@ -1023,6 +1199,7 @@ void main_window::on_open_file()
     }
 
     lbl_playlist_count_->setText(QString("%1 个文件").arg(playlist_view_->count()));
+    save_playlist_state();
     if (target_row >= 0)
     {
         play_playlist_row(target_row);
@@ -1113,6 +1290,7 @@ void main_window::on_playlist_item_activated(QListWidgetItem *item)
 void main_window::on_volume_changed(int value)
 {
     update_volume_icon(value);
+    save_volume_state(value);
     if (audio_backend_ != nullptr)
     {
         audio_backend_->set_volume(value);
@@ -1206,6 +1384,7 @@ void main_window::on_update_ui()
     }
 
     lbl_time_->setText(QString("%1 / %2").arg(format_time(current), format_time(duration_)));
+    save_current_playback_progress();
 }
 
 void main_window::play_playlist_row(int row)
@@ -1236,8 +1415,11 @@ void main_window::play_playlist_row(int row)
     }
 
     current_media_path_ = path;
+    last_saved_progress_second_ = -1;
     playlist_view_->setCurrentRow(row);
     update_playlist_buttons();
+    save_playlist_state();
+    restore_playback_progress(path);
 
     const QString display_name = QFileInfo(path).fileName();
     this->setWindowTitle(display_name + " - 视频播放器");
@@ -1258,6 +1440,8 @@ void main_window::stop_play()
         return;
     }
     LOG_INFO("stopping play");
+
+    save_current_playback_progress(true);
 
     playing_ = false;
     paused_ = false;
@@ -1338,6 +1522,8 @@ void main_window::stop_play()
     {
         video_widget_->clear();
     }
+    current_media_path_.clear();
+    last_saved_progress_second_ = -1;
     LOG_INFO("stop play finished");
 }
 
@@ -1375,6 +1561,7 @@ bool main_window::start_play(const std::string &filepath)
         });
 
     duration_ = demuxer_->duration();
+    last_saved_progress_second_ = -1;
     slider_seek_->setRange(0, static_cast<int>(duration_));
     slider_seek_->setEnabled(true);
     slider_seek_->setValue(0);
