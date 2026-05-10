@@ -82,7 +82,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     lbl_media_title_->setObjectName("mediaTitle");
     lbl_media_title_->setAlignment(Qt::AlignCenter);
     lbl_media_title_->setMinimumWidth(260);
-    lbl_media_title_->setMaximumWidth(620);
+    lbl_media_title_->setMaximumWidth(1240);
     lbl_media_title_->setAttribute(Qt::WA_TransparentForMouseEvents);
     title_drag_layout->addWidget(lbl_media_title_);
 
