@@ -2,9 +2,9 @@
 #include <QAbstractItemView>
 #include <QFileInfo>
 #include <QFontMetrics>
+#include <QIcon>
 #include <QKeySequence>
 #include <QMouseEvent>
-#include <QStyle>
 #include <QTime>
 #include <QWindow>
 #include "log.h"
@@ -179,15 +179,16 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 
     auto *seek_row = new QWidget(this);
     seek_row->setObjectName("seekRow");
-    seek_row->setFixedHeight(24);
+    seek_row->setFixedHeight(28);
 
     auto *seek_layout = new QHBoxLayout(seek_row);
     seek_layout->setContentsMargins(10, 0, 10, 0);
     seek_layout->setSpacing(0);
 
-    auto *btn_seek_back = new QPushButton("◀", this);
+    auto *btn_seek_back = new QPushButton(QIcon(":/icons/skip-backward-fill.svg"), QString(), this);
     btn_seek_back->setObjectName("seekEdgeButton");
     btn_seek_back->setCursor(Qt::PointingHandCursor);
+    btn_seek_back->setIconSize(QSize(14, 14));
     btn_seek_back->setToolTip("快退 15 秒");
 
     slider_seek_ = new QSlider(Qt::Horizontal, this);
@@ -195,11 +196,12 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     slider_seek_->setRange(0, 0);
     slider_seek_->setEnabled(false);
     slider_seek_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    slider_seek_->setFixedHeight(16);
+    slider_seek_->setFixedHeight(18);
 
-    auto *btn_seek_forward = new QPushButton("▶", this);
+    auto *btn_seek_forward = new QPushButton(QIcon(":/icons/skip-forward-fill.svg"), QString(), this);
     btn_seek_forward->setObjectName("seekEdgeButton");
     btn_seek_forward->setCursor(Qt::PointingHandCursor);
+    btn_seek_forward->setIconSize(QSize(14, 14));
     btn_seek_forward->setToolTip("快进 15 秒");
 
     seek_layout->addWidget(btn_seek_back);
@@ -219,29 +221,35 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     lbl_time_->setMinimumWidth(210);
     lbl_time_->setAlignment(Qt::AlignCenter);
 
-    btn_stop_ = new QPushButton("■", this);
+    btn_stop_ = new QPushButton(QIcon(":/icons/stop.svg"), QString(), this);
     btn_stop_->setObjectName("controlButton");
     btn_stop_->setCursor(Qt::PointingHandCursor);
+    btn_stop_->setIconSize(QSize(18, 18));
     btn_stop_->setToolTip("停止");
 
-    btn_backward_ = new QPushButton("|◀", this);
+    btn_backward_ = new QPushButton(QIcon(":/icons/previous.svg"), QString(), this);
     btn_backward_->setObjectName("controlButton");
     btn_backward_->setCursor(Qt::PointingHandCursor);
+    btn_backward_->setIconSize(QSize(18, 18));
     btn_backward_->setToolTip("播放上一个");
 
-    btn_play_pause_ = new QPushButton("▶", this);
+    btn_play_pause_ = new QPushButton(QIcon(":/icons/play.svg"), QString(), this);
     btn_play_pause_->setObjectName("controlButton");
     btn_play_pause_->setCursor(Qt::PointingHandCursor);
+    btn_play_pause_->setIconSize(QSize(18, 18));
     btn_play_pause_->setToolTip("播放/暂停");
 
-    btn_forward_ = new QPushButton("▶|", this);
+    btn_forward_ = new QPushButton(QIcon(":/icons/next.svg"), QString(), this);
     btn_forward_->setObjectName("controlButton");
     btn_forward_->setCursor(Qt::PointingHandCursor);
+    btn_forward_->setIconSize(QSize(18, 18));
     btn_forward_->setToolTip("播放下一个");
 
-    lbl_vol_icon_low_ = new QLabel("音量", this);
-    lbl_vol_icon_low_->setObjectName("volumeLabel");
+    lbl_vol_icon_low_ = new QLabel(this);
+    lbl_vol_icon_low_->setObjectName("volumeIcon");
     lbl_vol_icon_low_->setAlignment(Qt::AlignCenter);
+    lbl_vol_icon_low_->setFixedSize(20, 20);
+    lbl_vol_icon_low_->setAttribute(Qt::WA_TransparentForMouseEvents);
 
     volume_meter_ = new volume_meter(this);
     volume_meter_->setObjectName("volumeMeter");
@@ -251,9 +259,10 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     volume_meter_->setOrientation(Qt::Horizontal);
     volume_meter_->setToolTip("音量");
 
-    btn_playlist_ = new QPushButton("列表", this);
+    btn_playlist_ = new QPushButton(QIcon(":/icons/playlist.svg"), QString(), this);
     btn_playlist_->setObjectName("toolBlockButton");
     btn_playlist_->setCursor(Qt::PointingHandCursor);
+    btn_playlist_->setIconSize(QSize(18, 18));
     btn_playlist_->setCheckable(true);
     btn_playlist_->setChecked(false);
     btn_playlist_->setToolTip("显示/隐藏播放列表");
@@ -320,6 +329,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     connect(title_scroll_timer_, &QTimer::timeout, this, &main_window::on_title_scroll_tick);
 
     set_media_title_text("视频播放器");
+    update_volume_icon(volume_meter_->value());
     update_playlist_buttons();
 
     LOG_INFO("main window constructed");
@@ -459,8 +469,8 @@ void main_window::init_styles()
         "    font-weight: 700;"
         "    min-width: 28px;"
         "    max-width: 28px;"
-        "    min-height: 20px;"
-        "    max-height: 20px;"
+        "    min-height: 24px;"
+        "    max-height: 24px;"
         "}"
         "QPushButton#seekEdgeButton:hover {"
         "    color: #ffffff;"
@@ -502,11 +512,9 @@ void main_window::init_styles()
         "    font-size: 22px;"
         "    font-weight: 500;"
         "}"
-        "QLabel#volumeLabel {"
-        "    color: #07516E;"
-        "    font-size: 14px;"
-        "    font-weight: 600;"
-        "    min-width: 34px;"
+        "QLabel#volumeIcon {"
+        "    min-width: 20px;"
+        "    max-width: 20px;"
         "}"
         "QPushButton#toolBlockButton {"
         "    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(40, 89, 132, 0.8), stop:1 rgba(16, 42, 69, 0.95));"
@@ -553,32 +561,32 @@ void main_window::init_styles()
         "}"
         "QSlider#seekSlider {"
         "    background: transparent;"
-        "    min-height: 8px;"
-        "    max-height: 8px;"
+        "    min-height: 16px;"
+        "    max-height: 16px;"
         "}"
         "QSlider#seekSlider::groove:horizontal {"
         "    background: rgba(7, 83, 119, 165);"
         "    border: none;"
-        "    height: 2px;"
-        "    border-radius: 1px;"
+        "    height: 6px;"
+        "    border-radius: 3px;"
         "}"
         "QSlider#seekSlider::sub-page:horizontal {"
         "    background: #B9FF95;"
         "    border: none;"
-        "    height: 2px;"
-        "    border-radius: 1px;"
+        "    height: 6px;"
+        "    border-radius: 3px;"
         "}"
         "QSlider#seekSlider::add-page:horizontal {"
         "    background: rgba(7, 83, 119, 165);"
         "    border: none;"
-        "    height: 2px;"
-        "    border-radius: 1px;"
+        "    height: 6px;"
+        "    border-radius: 3px;"
         "}"
         "QSlider#seekSlider::handle:horizontal {"
         "    background: transparent;"
         "    border: none;"
-        "    width: 1px;"
-        "    margin: -3px 0px;"
+        "    width: 2px;"
+        "    margin: -5px 0px;"
         "}"
         "QProgressBar#volumeMeter {"
         "    background: transparent;"
@@ -809,6 +817,17 @@ void main_window::on_title_scroll_tick()
     update_media_title_text();
 }
 
+void main_window::update_volume_icon(int value)
+{
+    Q_UNUSED(value);
+    if (lbl_vol_icon_low_ == nullptr)
+    {
+        return;
+    }
+
+    lbl_vol_icon_low_->setPixmap(QIcon(":/icons/volume-up.svg").pixmap(16, 16));
+}
+
 void main_window::on_open_file()
 {
     LOG_INFO("on open file clicked");
@@ -873,7 +892,7 @@ void main_window::on_toggle_pause()
 
     LOG_INFO("toggle pause state new state paused {}", paused_);
 
-    btn_play_pause_->setText(paused_ ? "▶" : "Ⅱ");
+    btn_play_pause_->setIcon(QIcon(paused_ ? ":/icons/play.svg" : ":/icons/pause.svg"));
     btn_play_pause_->setToolTip(paused_ ? "播放" : "暂停");
 
     if (audio_backend_ != nullptr)
@@ -898,7 +917,7 @@ void main_window::on_stop_pressed()
     slider_seek_->setValue(0);
     slider_seek_->setEnabled(false);
     lbl_time_->setText("00:00:00 / 00:00:00");
-    btn_play_pause_->setText("▶");
+    btn_play_pause_->setIcon(QIcon(":/icons/play.svg"));
     btn_play_pause_->setToolTip("播放/暂停");
 }
 
@@ -956,6 +975,7 @@ void main_window::on_playlist_item_activated(QListWidgetItem *item)
 
 void main_window::on_volume_changed(int value)
 {
+    update_volume_icon(value);
     if (audio_backend_ != nullptr)
     {
         audio_backend_->set_volume(value);
@@ -1294,7 +1314,7 @@ bool main_window::start_play(const std::string &filepath)
 
     playing_ = true;
     paused_ = false;
-    btn_play_pause_->setText("Ⅱ");
+    btn_play_pause_->setIcon(QIcon(":/icons/pause.svg"));
     btn_play_pause_->setToolTip("暂停");
     ui_timer_->start();
     this->setFocus();

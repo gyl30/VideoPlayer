@@ -1,0 +1,13 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/">
+    <file alias="icons/play.svg">icons/play.svg</file>
+    <file alias="icons/pause.svg">icons/pause.svg</file>
+    <file alias="icons/stop.svg">icons/stop.svg</file>
+    <file alias="icons/next.svg">icons/next.svg</file>
+    <file alias="icons/previous.svg">icons/previous.svg</file>
+    <file alias="icons/playlist.svg">icons/playlist.svg</file>
+    <file alias="icons/volume-up.svg">icons/volume-up.svg</file>
+    <file alias="icons/skip-backward-fill.svg">icons/skip-backward-fill.svg</file>
+    <file alias="icons/skip-forward-fill.svg">icons/skip-forward-fill.svg</file>
+</qresource>
+</RCC>

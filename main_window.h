@@ -75,6 +75,7 @@ class main_window : public QMainWindow
     void set_media_title_text(const QString &text);
     void update_media_title_text();
     void on_title_scroll_tick();
+    void update_volume_icon(int value);
 
    private:
     video_widget *video_widget_ = nullptr;

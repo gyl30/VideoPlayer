@@ -94,7 +94,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGLWidgets OpenGL)
+find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGLWidgets OpenGL Svg)
 find_package(SDL2 REQUIRED)
 find_package(PkgConfig REQUIRED)
 
@@ -119,6 +119,7 @@ add_executable(VideoPlayer
     audio_resampler.cpp
     sdl_audio_backend.cpp
     video_sync_thread.cpp
+    resources.qrc
 )
 
 target_compile_options(VideoPlayer PRIVATE
@@ -150,6 +151,7 @@ target_link_libraries(VideoPlayer PRIVATE
     Qt6::Widgets
     Qt6::OpenGLWidgets
     Qt6::OpenGL
+    Qt6::Svg
     SDL2::SDL2
     ${FFMPEG_LIBRARIES}
 )
