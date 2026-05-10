@@ -82,7 +82,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     lbl_media_title_->setObjectName("mediaTitle");
     lbl_media_title_->setAlignment(Qt::AlignCenter);
     lbl_media_title_->setMinimumWidth(260);
-    lbl_media_title_->setMaximumWidth(460);
+    lbl_media_title_->setMaximumWidth(620);
     lbl_media_title_->setAttribute(Qt::WA_TransparentForMouseEvents);
     title_drag_layout->addWidget(lbl_media_title_);
 
@@ -403,21 +403,21 @@ void main_window::init_styles()
         "    background: rgba(0, 0, 0, 0.2);"
         "}"
         "QPushButton#closeButton {"
-        "    background: #8c201c;"
+        "    background: transparent;"
         "    border: none;"
-        "    color: #ffffff;"
-        "    font-size: 32px;"
+        "    color: #ecf8ff;"
+        "    font-size: 23px;"
         "    font-weight: 700;"
-        "    min-width: 54px;"
-        "    max-width: 54px;"
+        "    min-width: 44px;"
+        "    max-width: 44px;"
         "    min-height: 48px;"
         "    max-height: 48px;"
         "}"
         "QPushButton#closeButton:hover {"
-        "    background: #c62a24;"
+        "    background: rgba(255, 255, 255, 0.12);"
         "}"
         "QPushButton#closeButton:pressed {"
-        "    background: #641714;"
+        "    background: rgba(0, 0, 0, 0.2);"
         "}"
         "QWidget#contentWidget {"
         "    background: #000000;"
@@ -526,7 +526,7 @@ void main_window::init_styles()
         "}"
         "QPushButton#toolBlockButton {"
         "    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(40, 89, 132, 0.8), stop:1 rgba(16, 42, 69, 0.95));"
-        "    border: 1px solid rgba(106, 178, 229, 0.36);"
+        "    border: none;"
         "    color: #effbff;"
         "    border-radius: 1px;"
         "    min-width: 56px;"
@@ -537,11 +537,9 @@ void main_window::init_styles()
         "}"
         "QPushButton#toolBlockButton:hover {"
         "    background: rgba(45, 126, 187, 0.78);"
-        "    border-color: #86d7ff;"
         "}"
         "QPushButton#toolBlockButton:checked {"
         "    background: #1e7dbd;"
-        "    border-color: #9ce3ff;"
         "}"
         "QSlider::groove:horizontal {"
         "    height: 6px;"
