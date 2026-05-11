@@ -275,6 +275,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     playlist_view_->setObjectName("playlistView");
     playlist_view_->setHeaderHidden(true);
     playlist_view_->setIndentation(0);
+    playlist_view_->setExpandsOnDoubleClick(false);
     playlist_view_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     playlist_view_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     playlist_view_->setContextMenuPolicy(Qt::CustomContextMenu);
