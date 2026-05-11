@@ -262,8 +262,6 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     playlist_header_layout->setContentsMargins(0, 0, 0, 0);
     playlist_header_layout->setSpacing(8);
 
-    auto *playlist_title = new QLabel("播放列表", this);
-    playlist_title->setObjectName("playlistTitle");
     lbl_playlist_count_ = new QLabel("0 个文件", this);
     lbl_playlist_count_->setObjectName("playlistCount");
     lbl_playlist_count_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -278,7 +276,6 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_playlist_manage_->setIconSize(QSize(13, 13));
     btn_playlist_manage_->setToolTip("管理播放列表");
 
-    playlist_header_layout->addWidget(playlist_title);
     playlist_header_layout->addStretch(1);
     playlist_header_layout->addWidget(btn_playlist_create_);
     playlist_header_layout->addWidget(btn_playlist_manage_);
@@ -758,11 +755,6 @@ void main_window::init_styles()
         "QFrame#playlistPanel {"
         "    background: #0b1929;"
         "    border-left: 1px solid #16385d;"
-        "}"
-        "QLabel#playlistTitle {"
-        "    color: #eef4fa;"
-        "    font-size: 14px;"
-        "    font-weight: 600;"
         "}"
         "QPushButton#playlistHeaderButton {"
         "    background: transparent;"
