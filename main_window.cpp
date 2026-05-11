@@ -383,11 +383,6 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_playlist_->setChecked(false);
     btn_playlist_->setToolTip("显示/隐藏播放列表");
 
-    btn_playback_rate_ = new QPushButton(format_playback_rate_text(playback_rate_), this);
-    btn_playback_rate_->setObjectName("controlButtonWide");
-    btn_playback_rate_->setCursor(Qt::PointingHandCursor);
-    btn_playback_rate_->setToolTip("播放速度");
-
     btn_sequential_playback_ = new QPushButton("顺播", this);
     btn_sequential_playback_->setObjectName("controlButtonWide");
     btn_sequential_playback_->setCursor(Qt::PointingHandCursor);
@@ -402,6 +397,26 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_audio_only_->setChecked(false);
     btn_audio_only_->setToolTip("隐藏视频画面，仅播放音频");
 
+    playback_rate_tabs_ = new QTabBar(this);
+    playback_rate_tabs_->setObjectName("playbackRateTabs");
+    playback_rate_tabs_->setCursor(Qt::PointingHandCursor);
+    playback_rate_tabs_->setDrawBase(false);
+    playback_rate_tabs_->setExpanding(false);
+    playback_rate_tabs_->setMovable(false);
+    playback_rate_tabs_->setUsesScrollButtons(false);
+    playback_rate_tabs_->setElideMode(Qt::ElideNone);
+    playback_rate_tabs_->setDocumentMode(true);
+    playback_rate_tabs_->setToolTip("播放速度");
+    for (double rate : {0.5, 0.75, 1.0, 1.25, 1.5, 2.0})
+    {
+        const int index = playback_rate_tabs_->addTab(format_playback_rate_text(rate));
+        playback_rate_tabs_->setTabData(index, rate);
+        if (std::abs(playback_rate_ - rate) < 0.0001)
+        {
+            playback_rate_tabs_->setCurrentIndex(index);
+        }
+    }
+
     control_row->addWidget(lbl_time_);
     control_row->addStretch(1);
     control_row->addWidget(btn_stop_);
@@ -411,7 +426,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     control_row->addWidget(btn_sequential_playback_);
     control_row->addWidget(btn_audio_only_);
     control_row->addStretch(1);
-    control_row->addWidget(btn_playback_rate_);
+    control_row->addWidget(playback_rate_tabs_);
     control_row->addWidget(lbl_vol_icon_low_);
     control_row->addWidget(volume_meter_);
     control_row->addSpacing(12);
@@ -439,12 +454,20 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
             {
                 lbl_time_->setText(QString("%1 / %2").arg(format_time(static_cast<double>(value)), format_time(duration_)));
             });
-    connect(btn_playback_rate_,
-            &QPushButton::clicked,
+    connect(playback_rate_tabs_,
+            &QTabBar::currentChanged,
             this,
-            [this]()
+            [this](int index)
             {
-                show_playback_rate_menu(btn_playback_rate_->mapToGlobal(QPoint(0, btn_playback_rate_->height())));
+                if (playback_rate_tabs_ == nullptr || index < 0)
+                {
+                    return;
+                }
+                const QVariant rate_value = playback_rate_tabs_->tabData(index);
+                if (rate_value.isValid())
+                {
+                    set_playback_rate(rate_value.toDouble());
+                }
             });
 
     connect(btn_playlist_, &QPushButton::clicked, this, &main_window::on_toggle_playlist);
@@ -809,6 +832,24 @@ void main_window::init_styles()
         "QPushButton#controlButtonWide:checked {"
         "    background: #1e7dbd;"
         "    border-color: #83d7ff;"
+        "    color: #ffffff;"
+        "}"
+        "QTabBar#playbackRateTabs::tab {"
+        "    background: transparent;"
+        "    color: #d8e7f6;"
+        "    border: none;"
+        "    min-height: 34px;"
+        "    padding: 0 10px;"
+        "    margin: 0 1px;"
+        "    font-size: 13px;"
+        "    border-radius: 2px;"
+        "}"
+        "QTabBar#playbackRateTabs::tab:hover {"
+        "    background: rgba(255, 255, 255, 0.12);"
+        "    color: #ffffff;"
+        "}"
+        "QTabBar#playbackRateTabs::tab:selected {"
+        "    background: #1e7dbd;"
         "    color: #ffffff;"
         "}"
         "QLabel#timeLabel {"
@@ -1178,9 +1219,17 @@ void main_window::set_playback_rate(double rate)
     LOG_INFO("setting playback rate {} -> {}", playback_rate_, normalized_rate);
     playback_rate_ = normalized_rate;
 
-    if (btn_playback_rate_ != nullptr)
+    if (playback_rate_tabs_ != nullptr)
     {
-        btn_playback_rate_->setText(format_playback_rate_text(playback_rate_));
+        for (int i = 0; i < playback_rate_tabs_->count(); ++i)
+        {
+            if (std::abs(playback_rate_tabs_->tabData(i).toDouble() - playback_rate_) < 0.0001)
+            {
+                QSignalBlocker blocker(playback_rate_tabs_);
+                playback_rate_tabs_->setCurrentIndex(i);
+                break;
+            }
+        }
     }
 
     if (audio_backend_ != nullptr)
@@ -1191,27 +1240,6 @@ void main_window::set_playback_rate(double rate)
     {
         clock_->set_rate(playback_rate_);
     }
-}
-
-void main_window::show_playback_rate_menu(const QPoint &global_pos)
-{
-    QMenu menu(this);
-
-    for (double rate : {0.5, 0.75, 1.0, 1.25, 1.5, 2.0})
-    {
-        QAction *rate_action = menu.addAction(format_playback_rate_text(rate));
-        rate_action->setCheckable(true);
-        rate_action->setChecked(std::abs(playback_rate_ - rate) < 0.0001);
-        connect(rate_action,
-                &QAction::triggered,
-                this,
-                [this, rate]()
-                {
-                    set_playback_rate(rate);
-                });
-    }
-
-    menu.exec(global_pos);
 }
 
 void main_window::set_media_title_text(const QString &text)

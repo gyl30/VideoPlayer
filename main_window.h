@@ -13,6 +13,7 @@
 #include <QSlider>
 #include <QLabel>
 #include <QFrame>
+#include <QTabBar>
 #include <QTreeWidget>
 #include <QTimer>
 #include <QEvent>
@@ -95,7 +96,6 @@ class main_window : public QMainWindow
     void on_title_scroll_tick();
     void update_volume_icon(int value);
     void set_playback_rate(double rate);
-    void show_playback_rate_menu(const QPoint &global_pos);
     void restore_persistent_state();
     void save_persistent_state();
     void save_playlist_state();
@@ -122,9 +122,9 @@ class main_window : public QMainWindow
     QPushButton *btn_title_maximize_ = nullptr;
     QPushButton *btn_title_close_ = nullptr;
     QPushButton *btn_playlist_ = nullptr;
-    QPushButton *btn_playback_rate_ = nullptr;
     QPushButton *btn_sequential_playback_ = nullptr;
     QPushButton *btn_audio_only_ = nullptr;
+    QTabBar *playback_rate_tabs_ = nullptr;
 
     QFrame *video_frame_ = nullptr;
     QFrame *playlist_panel_ = nullptr;
