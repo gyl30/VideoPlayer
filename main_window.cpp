@@ -8,6 +8,7 @@
 #include <QMouseEvent>
 #include <QSettings>
 #include <QCoreApplication>
+#include <QStyle>
 #include <QTime>
 #include <QToolTip>
 #include <QUrl>
@@ -21,6 +22,64 @@ namespace
 constexpr const char *k_settings_org = "gyl30";
 constexpr const char *k_settings_app = "VideoPlayer";
 constexpr int k_resize_border_width = 8;
+
+class seek_slider : public QSlider
+{
+   public:
+    explicit seek_slider(QWidget *parent = nullptr) : QSlider(Qt::Horizontal, parent) {}
+
+   protected:
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        if (event->button() != Qt::LeftButton)
+        {
+            QSlider::mousePressEvent(event);
+            return;
+        }
+
+        setFocus();
+        setSliderDown(true);
+        emit sliderPressed();
+        update_slider_position(event);
+        event->accept();
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        if (!isSliderDown() || !(event->buttons() & Qt::LeftButton))
+        {
+            QSlider::mouseMoveEvent(event);
+            return;
+        }
+
+        update_slider_position(event);
+        event->accept();
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        if (event->button() != Qt::LeftButton || !isSliderDown())
+        {
+            QSlider::mouseReleaseEvent(event);
+            return;
+        }
+
+        update_slider_position(event);
+        setValue(sliderPosition());
+        setSliderDown(false);
+        emit sliderReleased();
+        event->accept();
+    }
+
+   private:
+    void update_slider_position(QMouseEvent *event)
+    {
+        const int x = std::clamp(static_cast<int>(event->position().x()), 0, std::max(width(), 0));
+        const int value = QStyle::sliderValueFromPosition(minimum(), maximum(), x, std::max(width(), 1));
+        setSliderPosition(value);
+        emit sliderMoved(value);
+    }
+};
 
 QString normalize_media_path(const QString &path)
 {
@@ -223,7 +282,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_seek_back->setIconSize(QSize(14, 14));
     btn_seek_back->setToolTip("快退 15 秒");
 
-    slider_seek_ = new QSlider(Qt::Horizontal, this);
+    slider_seek_ = new seek_slider(this);
     slider_seek_->setObjectName("seekSlider");
     slider_seek_->setRange(0, 0);
     slider_seek_->setEnabled(false);
@@ -326,6 +385,13 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 
     connect(slider_seek_, &QSlider::sliderPressed, this, &main_window::on_slider_pressed);
     connect(slider_seek_, &QSlider::sliderReleased, this, &main_window::on_slider_released);
+    connect(slider_seek_,
+            &QSlider::sliderMoved,
+            this,
+            [this](int value)
+            {
+                lbl_time_->setText(QString("%1 / %2").arg(format_time(static_cast<double>(value)), format_time(duration_)));
+            });
 
     connect(btn_playlist_, &QPushButton::clicked, this, &main_window::on_toggle_playlist);
     connect(playlist_view_, &QListWidget::itemDoubleClicked, this, &main_window::on_playlist_item_activated);
@@ -765,10 +831,15 @@ void main_window::init_styles()
         "    border-radius: 3px;"
         "}"
         "QSlider#seekSlider::handle:horizontal {"
-        "    background: transparent;"
-        "    border: none;"
-        "    width: 2px;"
-        "    margin: -5px 0px;"
+        "    background: #f4fff0;"
+        "    border: 2px solid #b9ff95;"
+        "    width: 14px;"
+        "    margin: -5px 0;"
+        "    border-radius: 7px;"
+        "}"
+        "QSlider#seekSlider::handle:horizontal:hover {"
+        "    background: #ffffff;"
+        "    border-color: #d2ffb9;"
         "}"
         "QProgressBar#volumeMeter {"
         "    background: transparent;"
