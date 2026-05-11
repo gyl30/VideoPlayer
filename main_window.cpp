@@ -664,6 +664,12 @@ main_window::~main_window()
 void main_window::closeEvent(QCloseEvent *event)
 {
     LOG_INFO("main window close event triggered");
+    closing_ = true;
+    if (video_fullscreen_window_ != nullptr)
+    {
+        LOG_INFO("closing video fullscreen window during main window shutdown");
+        video_fullscreen_window_->close();
+    }
     save_persistent_state();
     stop_play();
     QMainWindow::closeEvent(event);
@@ -728,6 +734,11 @@ bool main_window::eventFilter(QObject *watched, QEvent *event)
 
         if (event->type() == QEvent::Close)
         {
+            if (closing_)
+            {
+                LOG_INFO("video fullscreen close event allowed during shutdown");
+                return false;
+            }
             LOG_INFO("video fullscreen close event intercepted");
             exit_video_fullscreen();
             return true;

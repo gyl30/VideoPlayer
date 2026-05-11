@@ -123,6 +123,7 @@ class main_window : public QMainWindow
     QTimer *title_scroll_timer_ = nullptr;
 
     bool dragging_title_bar_ = false;
+    bool closing_ = false;
     QPoint drag_start_global_pos_;
     QPoint drag_start_window_pos_;
     int drag_press_window_x_ = 0;
