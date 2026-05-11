@@ -95,6 +95,35 @@ playlist_management_dialog::playlist_management_dialog(const playlist_store &sto
         "    background: #174a68;"
         "    color: #ffffff;"
         "}"
+        "QScrollBar:vertical {"
+        "    background: transparent;"
+        "    width: 10px;"
+        "    margin: 4px 2px 4px 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "    background: rgba(131, 215, 255, 0.38);"
+        "    border-radius: 4px;"
+        "    min-height: 28px;"
+        "}"
+        "QScrollBar::handle:vertical:hover {"
+        "    background: rgba(131, 215, 255, 0.56);"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "    height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "    background: transparent;"
+        "}"
+        "QScrollBar:horizontal {"
+        "    background: transparent;"
+        "    height: 0;"
+        "}"
+        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {"
+        "    width: 0;"
+        "}"
+        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {"
+        "    background: transparent;"
+        "}"
         "QPushButton {"
         "    background: transparent;"
         "    color: #f5fbff;"
@@ -330,6 +359,7 @@ void playlist_management_dialog::setup_ui()
     source_layout->addWidget(source_file_label);
     source_songs_list_ = new QListWidget(source_panel);
     source_songs_list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    source_songs_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     source_layout->addWidget(source_songs_list_, 1);
 
     auto *action_panel = new QWidget(this);
@@ -372,6 +402,7 @@ void playlist_management_dialog::setup_ui()
     target_layout->addWidget(target_file_label);
     target_songs_list_ = new QListWidget(target_panel);
     target_songs_list_->setSelectionMode(QAbstractItemView::NoSelection);
+    target_songs_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     target_layout->addWidget(target_songs_list_, 1);
 
     main_layout->addWidget(source_panel, 2);
