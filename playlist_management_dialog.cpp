@@ -1,6 +1,8 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QPushButton>
@@ -34,11 +36,96 @@ const playlist_store &playlist_management_dialog::result_store() const { return 
 void playlist_management_dialog::on_source_playlist_changed()
 {
     update_song_list(source_playlists_list_, source_songs_list_, true);
+    update_action_buttons();
 }
 
 void playlist_management_dialog::on_target_playlist_changed()
 {
     update_song_list(target_playlists_list_, target_songs_list_, false);
+    update_action_buttons();
+}
+
+void playlist_management_dialog::on_source_selection_changed() { update_action_buttons(); }
+
+void playlist_management_dialog::on_create_playlist()
+{
+    bool accepted = false;
+    const QString name = QInputDialog::getText(this, "新建播放列表", "播放列表名称：", QLineEdit::Normal, "", &accepted);
+    if (!accepted)
+    {
+        return;
+    }
+
+    const QString playlist_id = temp_store_.create_playlist(name);
+    temp_store_.set_active_playlist(playlist_id);
+    populate_playlist_lists();
+}
+
+void playlist_management_dialog::on_rename_playlist()
+{
+    const QString playlist_id = current_playlist_id(source_playlists_list_);
+    const playlist_entry *entry = temp_store_.playlist_by_id(playlist_id);
+    if (entry == nullptr)
+    {
+        return;
+    }
+
+    bool accepted = false;
+    const QString name =
+        QInputDialog::getText(this, "重命名播放列表", "播放列表名称：", QLineEdit::Normal, entry->name, &accepted);
+    if (!accepted || !temp_store_.rename_playlist(playlist_id, name))
+    {
+        return;
+    }
+
+    populate_playlist_lists();
+}
+
+void playlist_management_dialog::on_copy_rows()
+{
+    const QString source_id = current_playlist_id(source_playlists_list_);
+    const QString target_id = current_playlist_id(target_playlists_list_);
+    const QList<int> rows = selected_source_rows();
+    if (rows.isEmpty() || source_id.isEmpty() || target_id.isEmpty())
+    {
+        return;
+    }
+
+    if (temp_store_.copy_rows(source_id, rows, target_id))
+    {
+        populate_playlist_lists();
+    }
+}
+
+void playlist_management_dialog::on_move_rows()
+{
+    const QString source_id = current_playlist_id(source_playlists_list_);
+    const QString target_id = current_playlist_id(target_playlists_list_);
+    const QList<int> rows = selected_source_rows();
+    if (rows.isEmpty() || source_id.isEmpty() || target_id.isEmpty())
+    {
+        return;
+    }
+
+    if (temp_store_.move_rows(source_id, rows, target_id))
+    {
+        populate_playlist_lists();
+    }
+}
+
+void playlist_management_dialog::on_remove_rows()
+{
+    const QString playlist_id = current_playlist_id(source_playlists_list_);
+    const QList<int> rows = selected_source_rows();
+    if (rows.isEmpty() || playlist_id.isEmpty())
+    {
+        return;
+    }
+
+    if (temp_store_.remove_rows(playlist_id, rows))
+    {
+        populate_playlist_lists();
+    }
 }
 
 void playlist_management_dialog::setup_ui()
@@ -121,11 +208,17 @@ void playlist_management_dialog::setup_connections()
             {
                 on_source_playlist_changed();
             });
+    connect(source_songs_list_, &QListWidget::itemSelectionChanged, this, &playlist_management_dialog::on_source_selection_changed);
     connect(target_playlists_list_, &QListWidget::currentItemChanged, this,
             [this](QListWidgetItem *, QListWidgetItem *)
             {
                 on_target_playlist_changed();
             });
+    connect(btn_create_playlist_, &QPushButton::clicked, this, &playlist_management_dialog::on_create_playlist);
+    connect(btn_rename_playlist_, &QPushButton::clicked, this, &playlist_management_dialog::on_rename_playlist);
+    connect(btn_copy_, &QPushButton::clicked, this, &playlist_management_dialog::on_copy_rows);
+    connect(btn_move_, &QPushButton::clicked, this, &playlist_management_dialog::on_move_rows);
+    connect(btn_remove_, &QPushButton::clicked, this, &playlist_management_dialog::on_remove_rows);
     connect(btn_apply_, &QPushButton::clicked, this, &QDialog::accept);
     connect(btn_cancel_, &QPushButton::clicked, this, &QDialog::reject);
 }
@@ -190,7 +283,7 @@ void playlist_management_dialog::update_song_list(QListWidget *playlist_list, QL
 
     if (source_side)
     {
-        btn_rename_playlist_->setEnabled(true);
+        update_action_buttons();
     }
 }
 
@@ -201,4 +294,38 @@ QString playlist_management_dialog::current_playlist_id(QListWidget *playlist_li
         return {};
     }
     return playlist_list->currentItem()->data(Qt::UserRole).toString();
+}
+
+QList<int> playlist_management_dialog::selected_source_rows() const
+{
+    QList<int> rows;
+    if (source_songs_list_ == nullptr)
+    {
+        return rows;
+    }
+
+    const QList<QListWidgetItem *> items = source_songs_list_->selectedItems();
+    for (QListWidgetItem *item : items)
+    {
+        if (item != nullptr)
+        {
+            rows.append(source_songs_list_->row(item));
+        }
+    }
+    return rows;
+}
+
+void playlist_management_dialog::update_action_buttons()
+{
+    const QString source_id = current_playlist_id(source_playlists_list_);
+    const QString target_id = current_playlist_id(target_playlists_list_);
+    const bool has_source_playlist = !source_id.isEmpty();
+    const bool has_target_playlist = !target_id.isEmpty();
+    const bool has_selected_rows = !selected_source_rows().isEmpty();
+    const bool different_playlist = has_source_playlist && has_target_playlist && source_id != target_id;
+
+    btn_rename_playlist_->setEnabled(has_source_playlist);
+    btn_copy_->setEnabled(has_selected_rows && different_playlist);
+    btn_move_->setEnabled(has_selected_rows && different_playlist);
+    btn_remove_->setEnabled(has_selected_rows && has_source_playlist);
 }

@@ -7,6 +7,7 @@
 class QListWidget;
 class QListWidgetItem;
 class QPushButton;
+class QString;
 
 class playlist_management_dialog : public QDialog
 {
@@ -21,6 +22,12 @@ class playlist_management_dialog : public QDialog
    private slots:
     void on_source_playlist_changed();
     void on_target_playlist_changed();
+    void on_source_selection_changed();
+    void on_create_playlist();
+    void on_rename_playlist();
+    void on_copy_rows();
+    void on_move_rows();
+    void on_remove_rows();
 
    private:
     void setup_ui();
@@ -28,6 +35,8 @@ class playlist_management_dialog : public QDialog
     void populate_playlist_lists();
     void update_song_list(QListWidget *playlist_list, QListWidget *song_list, bool source_side);
     QString current_playlist_id(QListWidget *playlist_list) const;
+    QList<int> selected_source_rows() const;
+    void update_action_buttons();
 
    private:
     playlist_store temp_store_;
