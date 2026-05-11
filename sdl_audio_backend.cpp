@@ -163,17 +163,32 @@ void sdl_audio_backend::audio_callback(Uint8 *stream, int len)
                 }
             }
 
-            AVChannelLayout *src_layout = &current_frame_->raw()->ch_layout;
-            AVChannelLayout tgt_layout;
+#if LIBAVUTIL_VERSION_MAJOR >= 57
+            audio_channel_layout *src_layout = &current_frame_->raw()->ch_layout;
+            audio_channel_layout tgt_layout;
             av_channel_layout_default(&tgt_layout, 2);
+#else
+            audio_channel_layout src_layout = current_frame_->raw()->channel_layout;
+            if (src_layout == 0)
+            {
+                src_layout = static_cast<uint64_t>(av_get_default_channel_layout(current_frame_->raw()->channels));
+            }
+            const audio_channel_layout tgt_layout = AV_CH_LAYOUT_STEREO;
+#endif
 
             bool init_ret = resampler_.init(&tgt_layout,
                                             44100,
                                             AV_SAMPLE_FMT_S16,
+#if LIBAVUTIL_VERSION_MAJOR >= 57
                                             src_layout,
+#else
+                                            &src_layout,
+#endif
                                             current_frame_->raw()->sample_rate,
                                             static_cast<AVSampleFormat>(current_frame_->raw()->format));
+#if LIBAVUTIL_VERSION_MAJOR >= 57
             av_channel_layout_uninit(&tgt_layout);
+#endif
 
             if (!init_ret)
             {

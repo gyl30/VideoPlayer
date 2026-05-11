@@ -10,7 +10,11 @@ extern "C"
 audio_resampler::audio_resampler()
 {
     LOG_INFO("audio resampler constructed");
+#if LIBAVUTIL_VERSION_MAJOR >= 57
     av_channel_layout_default(&in_ch_layout_, 0);
+#else
+    in_ch_layout_ = 0;
+#endif
 }
 
 audio_resampler::~audio_resampler()
@@ -20,17 +24,26 @@ audio_resampler::~audio_resampler()
     {
         swr_free(&swr_ctx_);
     }
+#if LIBAVUTIL_VERSION_MAJOR >= 57
     av_channel_layout_uninit(&in_ch_layout_);
+#endif
 }
 
-bool audio_resampler::init(const AVChannelLayout *tgt_ch_layout,
+bool audio_resampler::init(const audio_channel_layout *tgt_ch_layout,
                            int tgt_rate,
                            AVSampleFormat tgt_fmt,
-                           const AVChannelLayout *src_ch_layout,
+                           const audio_channel_layout *src_ch_layout,
                            int src_rate,
                            AVSampleFormat src_fmt)
 {
-    if (swr_ctx_ != nullptr && av_channel_layout_compare(&in_ch_layout_, src_ch_layout) == 0 && in_rate_ == src_rate && in_fmt_ == src_fmt)
+    bool same_layout = false;
+#if LIBAVUTIL_VERSION_MAJOR >= 57
+    same_layout = av_channel_layout_compare(&in_ch_layout_, src_ch_layout) == 0;
+#else
+    same_layout = in_ch_layout_ == *src_ch_layout;
+#endif
+
+    if (swr_ctx_ != nullptr && same_layout && in_rate_ == src_rate && in_fmt_ == src_fmt)
     {
         return true;
     }
@@ -43,7 +56,20 @@ bool audio_resampler::init(const AVChannelLayout *tgt_ch_layout,
         swr_free(&swr_ctx_);
     }
 
+#if LIBAVUTIL_VERSION_MAJOR >= 57
     const int ret = swr_alloc_set_opts2(&swr_ctx_, tgt_ch_layout, tgt_fmt, tgt_rate, src_ch_layout, src_fmt, src_rate, 0, nullptr);
+#else
+    swr_ctx_ = swr_alloc_set_opts(swr_ctx_,
+                                  static_cast<int64_t>(*tgt_ch_layout),
+                                  tgt_fmt,
+                                  tgt_rate,
+                                  static_cast<int64_t>(*src_ch_layout),
+                                  src_fmt,
+                                  src_rate,
+                                  0,
+                                  nullptr);
+    const int ret = swr_ctx_ == nullptr ? -1 : 0;
+#endif
 
     if (ret < 0 || swr_ctx_ == nullptr || swr_init(swr_ctx_) < 0)
     {
@@ -51,8 +77,12 @@ bool audio_resampler::init(const AVChannelLayout *tgt_ch_layout,
         return false;
     }
 
+#if LIBAVUTIL_VERSION_MAJOR >= 57
     av_channel_layout_uninit(&in_ch_layout_);
     av_channel_layout_copy(&in_ch_layout_, src_ch_layout);
+#else
+    in_ch_layout_ = *src_ch_layout;
+#endif
 
     in_rate_ = src_rate;
     in_fmt_ = src_fmt;
