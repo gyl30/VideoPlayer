@@ -11,10 +11,16 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <cmath>
 #include "av_clock.h"
 #include "safe_queue.h"
 #include "media_objects.h"
 #include "audio_resampler.h"
+
+extern "C"
+{
+#include <libavfilter/avfilter.h>
+}
 
 class sdl_audio_backend
 {
@@ -29,6 +35,7 @@ class sdl_audio_backend
               AVRational tb,
               av_clock *clk);
     void pause(bool p) const;
+    void set_playback_rate(double rate);
     void set_volume(int percent);
     void close();
 
@@ -45,24 +52,36 @@ class sdl_audio_backend
     void audio_callback(Uint8 *stream, int len);
     void process_audio();
     void clear_pcm_queue();
+    void destroy_filter_graph();
+    bool configure_filter_graph(const AVFrame *frame, double playback_rate);
+    bool filter_matches_frame(const AVFrame *frame) const;
 
    private:
     static constexpr int k_output_sample_rate = 44100;
     static constexpr int k_output_channels = 2;
     static constexpr int k_output_bytes_per_frame = 4;
     static constexpr size_t k_max_pcm_queue_bytes = static_cast<size_t>(k_output_sample_rate * k_output_bytes_per_frame * 2);
+    static constexpr AVRational k_filter_time_base = {1, AV_TIME_BASE};
 
     AVRational time_base_{0, 1};
     av_clock *clock_ = nullptr;
-    audio_resampler resampler_;
     SDL_AudioDeviceID audio_dev_ = 0;
     std::thread process_thread_;
     std::atomic<bool> stop_{false};
+    std::atomic<double> playback_rate_{1.0};
+    std::atomic<uint64_t> config_generation_{0};
     std::atomic<int> volume_{SDL_MIX_MAXVOLUME};
     std::mutex pcm_mutex_;
     std::condition_variable pcm_cond_;
     std::deque<pcm_chunk> pcm_queue_;
     size_t queued_pcm_bytes_ = 0;
+    AVFilterGraph *filter_graph_ = nullptr;
+    AVFilterContext *buffersrc_ctx_ = nullptr;
+    AVFilterContext *buffersink_ctx_ = nullptr;
+    audio_channel_layout filter_src_layout_{};
+    int filter_src_rate_ = 0;
+    AVSampleFormat filter_src_fmt_ = AV_SAMPLE_FMT_NONE;
+    double filter_playback_rate_ = 1.0;
     safe_queue<std::shared_ptr<media_frame>> *frame_queue_ = nullptr;
     safe_queue<std::shared_ptr<media_packet>> *packet_queue_ = nullptr;
 };
