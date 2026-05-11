@@ -21,10 +21,25 @@ double av_clock::get() const
     }
     auto now = static_cast<double>(av_gettime_relative());
     const double time_elapsed = (now / 1000000.0) - last_updated_.load();
-    return pts_.load() + time_elapsed;
+    return pts_.load() + (time_elapsed * rate_.load());
 }
 
 int av_clock::serial() const { return serial_.load(); }
+
+void av_clock::set_rate(double rate)
+{
+    if (rate <= 0.0)
+    {
+        return;
+    }
+
+    const double current = get();
+    pts_.store(current);
+    rate_.store(rate);
+    update_time();
+}
+
+double av_clock::rate() const { return rate_.load(); }
 
 void av_clock::pause()
 {

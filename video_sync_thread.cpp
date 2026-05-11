@@ -79,11 +79,12 @@ void video_sync_thread::run()
 
             const double master_clock = clock_->get();
             const double diff = pts - master_clock;
+            const double playback_rate = clock_->rate();
 
             LOG_TRACE("video pts {:.3f} raw pts {} master clock {:.3f} diff {:.3f}", pts, frame->raw()->pts, master_clock, diff);
             if (diff > 0.01)
             {
-                auto sleep_ms = static_cast<uint64_t>(diff * 1000);
+                auto sleep_ms = static_cast<uint64_t>((diff / playback_rate) * 1000.0);
                 if (sleep_ms > 50)
                 {
                     sleep_ms = 50;

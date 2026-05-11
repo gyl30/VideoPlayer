@@ -12,6 +12,8 @@ class av_clock
     void set(double p, int serial);
     [[nodiscard]] double get() const;
     [[nodiscard]] int serial() const;
+    void set_rate(double rate);
+    [[nodiscard]] double rate() const;
     void pause();
     void resume();
 
@@ -23,6 +25,7 @@ class av_clock
     std::atomic<double> pts_{0.0};
     std::atomic<bool> paused_{false};
     std::atomic<double> last_updated_{0.0};
+    std::atomic<double> rate_{1.0};
 
     std::atomic<int> serial_{-1};
 };
