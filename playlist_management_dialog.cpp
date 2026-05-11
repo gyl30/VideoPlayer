@@ -25,6 +25,65 @@ playlist_management_dialog::playlist_management_dialog(const playlist_store &sto
 {
     setWindowTitle("管理播放列表");
     resize(820, 520);
+    setObjectName("playlistManagementDialog");
+    setStyleSheet(
+        "QDialog#playlistManagementDialog {"
+        "    background: #071b30;"
+        "    color: #d8e0ea;"
+        "}"
+        "QWidget#playlistSection {"
+        "    background: #0b1929;"
+        "    border: 1px solid #16385d;"
+        "    border-radius: 8px;"
+        "}"
+        "QWidget#playlistActionPanel {"
+        "    background: transparent;"
+        "}"
+        "QLabel[sectionTitle=\"true\"] {"
+        "    color: #eef4fa;"
+        "    font-size: 14px;"
+        "    font-weight: 600;"
+        "}"
+        "QListWidget {"
+        "    background: transparent;"
+        "    color: #d8e7f6;"
+        "    border: 1px solid #16385d;"
+        "    border-radius: 6px;"
+        "    outline: none;"
+        "    padding: 4px;"
+        "}"
+        "QListWidget::item {"
+        "    min-height: 30px;"
+        "    padding: 4px 8px;"
+        "    border-radius: 4px;"
+        "}"
+        "QListWidget::item:hover {"
+        "    background: #1b2631;"
+        "    color: #f3f8fc;"
+        "}"
+        "QListWidget::item:selected {"
+        "    background: #174a68;"
+        "    color: #ffffff;"
+        "}"
+        "QPushButton {"
+        "    background: transparent;"
+        "    color: #f5fbff;"
+        "    border: none;"
+        "    border-radius: 4px;"
+        "    min-height: 38px;"
+        "    padding: 0 12px;"
+        "}"
+        "QPushButton:hover {"
+        "    background: rgba(255, 255, 255, 0.12);"
+        "    color: #ffffff;"
+        "}"
+        "QPushButton:pressed {"
+        "    background: rgba(8, 29, 49, 0.9);"
+        "}"
+        "QPushButton:disabled {"
+        "    color: rgba(245, 251, 255, 0.35);"
+        "}"
+    );
 
     setup_ui();
     setup_connections();
@@ -134,10 +193,13 @@ void playlist_management_dialog::setup_ui()
     main_layout->setSpacing(10);
 
     auto *source_panel = new QWidget(this);
+    source_panel->setObjectName("playlistSection");
     auto *source_layout = new QVBoxLayout(source_panel);
-    source_layout->setContentsMargins(0, 0, 0, 0);
+    source_layout->setContentsMargins(12, 12, 12, 12);
     source_layout->setSpacing(8);
-    source_layout->addWidget(new QLabel("源播放列表", source_panel));
+    auto *source_playlist_label = new QLabel("源播放列表", source_panel);
+    source_playlist_label->setProperty("sectionTitle", true);
+    source_layout->addWidget(source_playlist_label);
 
     source_playlists_list_ = new QListWidget(source_panel);
     source_layout->addWidget(source_playlists_list_);
@@ -154,12 +216,15 @@ void playlist_management_dialog::setup_ui()
     playlist_button_layout->addWidget(btn_rename_playlist_);
     source_layout->addWidget(playlist_button_row);
 
-    source_layout->addWidget(new QLabel("源文件列表", source_panel));
+    auto *source_file_label = new QLabel("源文件列表", source_panel);
+    source_file_label->setProperty("sectionTitle", true);
+    source_layout->addWidget(source_file_label);
     source_songs_list_ = new QListWidget(source_panel);
     source_songs_list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     source_layout->addWidget(source_songs_list_, 1);
 
     auto *action_panel = new QWidget(this);
+    action_panel->setObjectName("playlistActionPanel");
     auto *action_layout = new QVBoxLayout(action_panel);
     action_layout->setContentsMargins(0, 0, 0, 0);
     action_layout->setSpacing(8);
@@ -182,15 +247,20 @@ void playlist_management_dialog::setup_ui()
     action_layout->addWidget(btn_cancel_);
 
     auto *target_panel = new QWidget(this);
+    target_panel->setObjectName("playlistSection");
     auto *target_layout = new QVBoxLayout(target_panel);
-    target_layout->setContentsMargins(0, 0, 0, 0);
+    target_layout->setContentsMargins(12, 12, 12, 12);
     target_layout->setSpacing(8);
-    target_layout->addWidget(new QLabel("目标播放列表", target_panel));
+    auto *target_playlist_label = new QLabel("目标播放列表", target_panel);
+    target_playlist_label->setProperty("sectionTitle", true);
+    target_layout->addWidget(target_playlist_label);
 
     target_playlists_list_ = new QListWidget(target_panel);
     target_layout->addWidget(target_playlists_list_);
 
-    target_layout->addWidget(new QLabel("目标文件列表", target_panel));
+    auto *target_file_label = new QLabel("目标文件列表", target_panel);
+    target_file_label->setProperty("sectionTitle", true);
+    target_layout->addWidget(target_file_label);
     target_songs_list_ = new QListWidget(target_panel);
     target_songs_list_->setSelectionMode(QAbstractItemView::NoSelection);
     target_layout->addWidget(target_songs_list_, 1);

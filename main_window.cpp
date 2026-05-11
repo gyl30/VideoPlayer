@@ -260,7 +260,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 
     auto *playlist_header_layout = new QHBoxLayout();
     playlist_header_layout->setContentsMargins(0, 0, 0, 0);
-    playlist_header_layout->setSpacing(8);
+    playlist_header_layout->setSpacing(0);
 
     lbl_playlist_count_ = new QLabel("0 个文件", this);
     lbl_playlist_count_->setObjectName("playlistCount");
@@ -276,9 +276,16 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_playlist_manage_->setIconSize(QSize(13, 13));
     btn_playlist_manage_->setToolTip("管理播放列表");
 
+    auto *playlist_header_group = new QWidget(this);
+    playlist_header_group->setObjectName("playlistHeaderGroup");
+    auto *playlist_header_group_layout = new QHBoxLayout(playlist_header_group);
+    playlist_header_group_layout->setContentsMargins(4, 4, 4, 4);
+    playlist_header_group_layout->setSpacing(2);
+    playlist_header_group_layout->addWidget(btn_playlist_create_);
+    playlist_header_group_layout->addWidget(btn_playlist_manage_);
+
     playlist_header_layout->addStretch(1);
-    playlist_header_layout->addWidget(btn_playlist_create_);
-    playlist_header_layout->addWidget(btn_playlist_manage_);
+    playlist_header_layout->addWidget(playlist_header_group);
     playlist_layout->addLayout(playlist_header_layout);
 
     playlist_view_ = new QTreeWidget(this);
@@ -755,6 +762,10 @@ void main_window::init_styles()
         "QFrame#playlistPanel {"
         "    background: #0b1929;"
         "    border-left: 1px solid #16385d;"
+        "}"
+        "QWidget#playlistHeaderGroup {"
+        "    background: rgba(255, 255, 255, 0.06);"
+        "    border-radius: 6px;"
         "}"
         "QPushButton#playlistHeaderButton {"
         "    background: transparent;"
