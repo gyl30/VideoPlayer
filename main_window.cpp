@@ -2207,6 +2207,8 @@ void main_window::stop_play()
     current_playback_playlist_id_.clear();
     current_playback_row_ = -1;
     last_saved_progress_second_ = -1;
+    refresh_playlist_view();
+    update_playlist_buttons();
     LOG_INFO("stop play finished");
 }
 
