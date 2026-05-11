@@ -1275,8 +1275,28 @@ void main_window::update_fullscreen_button()
     }
 
     const bool fullscreen = is_video_fullscreen();
+    const bool has_video = demuxer_ != nullptr && demuxer_->video_index() >= 0;
     btn_video_fullscreen_->setIcon(QIcon(fullscreen ? ":/icons/fullscreen-exit.svg" : ":/icons/fullscreen-enter.svg"));
-    btn_video_fullscreen_->setToolTip(fullscreen ? "退出全屏" : "全屏");
+    if (fullscreen)
+    {
+        btn_video_fullscreen_->setEnabled(true);
+        btn_video_fullscreen_->setToolTip("退出全屏");
+    }
+    else if (audio_only_mode_)
+    {
+        btn_video_fullscreen_->setEnabled(false);
+        btn_video_fullscreen_->setToolTip("仅音频模式下不可全屏");
+    }
+    else if (!has_video)
+    {
+        btn_video_fullscreen_->setEnabled(false);
+        btn_video_fullscreen_->setToolTip("当前媒体没有视频画面");
+    }
+    else
+    {
+        btn_video_fullscreen_->setEnabled(true);
+        btn_video_fullscreen_->setToolTip("全屏");
+    }
 }
 
 void main_window::set_playback_rate(double rate)
@@ -1773,6 +1793,7 @@ void main_window::enter_video_fullscreen()
     video_fullscreen_window_->activateWindow();
     video_fullscreen_window_->raise();
     video_fullscreen_window_->setFocus();
+    update_fullscreen_button();
 }
 
 void main_window::exit_video_fullscreen()
@@ -1933,17 +1954,26 @@ void main_window::on_toggle_fullscreen()
 
 void main_window::update_playlist_header_buttons()
 {
+    const QString target_playlist_id = selected_playlist_target_id();
+    const playlist_entry *target_playlist = playlist_store_.playlist_by_id(target_playlist_id);
+    QTreeWidgetItem *selected_file_item = selected_playlist_file_item();
+
     if (btn_playlist_add_ != nullptr)
     {
-        btn_playlist_add_->setEnabled(!selected_playlist_target_id().isEmpty());
+        btn_playlist_add_->setEnabled(target_playlist != nullptr);
+        btn_playlist_add_->setToolTip(target_playlist != nullptr ? QString("向“%1”添加文件").arg(target_playlist->name)
+                                                                 : "没有可用的播放列表");
     }
     if (btn_playlist_play_ != nullptr)
     {
-        btn_playlist_play_->setEnabled(selected_playlist_file_item() != nullptr);
+        btn_playlist_play_->setEnabled(selected_file_item != nullptr);
+        btn_playlist_play_->setToolTip(selected_file_item != nullptr ? QString("播放“%1”").arg(selected_file_item->text(0))
+                                                                     : "请选择一个文件后播放");
     }
     if (btn_playlist_manage_ != nullptr)
     {
-        btn_playlist_manage_->setEnabled(true);
+        btn_playlist_manage_->setEnabled(playlist_store_.playlist_count() > 0);
+        btn_playlist_manage_->setToolTip("管理播放列表");
     }
 }
 
@@ -1951,7 +1981,7 @@ void main_window::on_toggle_playlist()
 {
     const bool visible = playlist_panel_->isVisible();
     playlist_panel_->setVisible(!visible);
-    btn_playlist_->setChecked(!visible);
+    update_playlist_buttons();
 }
 
 void main_window::on_play_previous()
@@ -1994,6 +2024,7 @@ void main_window::on_audio_only_toggled(bool checked)
     {
         video_widget_->clear();
     }
+    update_fullscreen_button();
 }
 
 void main_window::on_video_frame_ready(std::shared_ptr<media_frame> frame)
@@ -2167,7 +2198,13 @@ void main_window::update_playlist_buttons()
 
     btn_backward_->setEnabled(has_current && row > 0);
     btn_forward_->setEnabled(has_current && row + 1 < file_count);
-    btn_playlist_->setEnabled(true);
+    if (btn_playlist_ != nullptr)
+    {
+        const bool visible = playlist_panel_ != nullptr && playlist_panel_->isVisible();
+        btn_playlist_->setEnabled(true);
+        btn_playlist_->setChecked(visible);
+        btn_playlist_->setToolTip(visible ? "隐藏播放列表" : "显示播放列表");
+    }
 }
 
 void main_window::finish_playback()
@@ -2297,6 +2334,7 @@ void main_window::stop_play()
     last_saved_progress_second_ = -1;
     refresh_playlist_view();
     update_playlist_buttons();
+    update_fullscreen_button();
     LOG_INFO("stop play finished");
 }
 
@@ -2413,6 +2451,7 @@ bool main_window::start_play(const std::string &filepath)
     btn_play_pause_->setToolTip("暂停");
     ui_timer_->start();
     this->setFocus();
+    update_fullscreen_button();
 
     LOG_INFO("play started successfully");
 
