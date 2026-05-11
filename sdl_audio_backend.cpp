@@ -61,6 +61,7 @@ bool sdl_audio_backend::init(safe_queue<std::shared_ptr<media_frame>> *frame_que
     filter_src_rate_ = 0;
     filter_src_fmt_ = AV_SAMPLE_FMT_NONE;
     filter_playback_rate_ = 1.0;
+    filter_sink_time_base_ = AVRational{0, 1};
 #if LIBAVUTIL_VERSION_MAJOR >= 57
     av_channel_layout_uninit(&filter_src_layout_);
     av_channel_layout_default(&filter_src_layout_, 0);
@@ -349,7 +350,9 @@ void sdl_audio_backend::process_audio()
             }
 
             const int total_frames = buffer_size / k_output_bytes_per_frame;
-            const double chunk_base_pts = frame_pts_seconds(filtered_frame, k_filter_time_base);
+            const AVRational output_time_base =
+                (filter_sink_time_base_.num > 0 && filter_sink_time_base_.den > 0) ? filter_sink_time_base_ : k_filter_time_base;
+            const double chunk_base_pts = frame_pts_seconds(filtered_frame, output_time_base);
             const uint8_t *chunk_src = filtered_frame->data[0];
             av_frame_free(&filtered_frame);
 
@@ -439,6 +442,7 @@ void sdl_audio_backend::destroy_filter_graph()
     buffersrc_ctx_ = nullptr;
     buffersink_ctx_ = nullptr;
     tempo_ctx_ = nullptr;
+    filter_sink_time_base_ = AVRational{0, 1};
 
     if (filter_graph_ != nullptr)
     {
@@ -598,6 +602,7 @@ bool sdl_audio_backend::configure_filter_graph(const AVFrame *frame, double play
     filter_src_rate_ = frame->sample_rate;
     filter_src_fmt_ = static_cast<AVSampleFormat>(frame->format);
     filter_playback_rate_ = playback_rate;
+    filter_sink_time_base_ = av_buffersink_get_time_base(buffersink_ctx_);
     LOG_INFO("audio filter graph configured playback rate {}", playback_rate);
     return true;
 }

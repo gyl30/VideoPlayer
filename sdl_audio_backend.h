@@ -83,6 +83,7 @@ class sdl_audio_backend
     AVFilterContext *buffersrc_ctx_ = nullptr;
     AVFilterContext *buffersink_ctx_ = nullptr;
     AVFilterContext *tempo_ctx_ = nullptr;
+    AVRational filter_sink_time_base_{0, 1};
     audio_channel_layout filter_src_layout_{};
     int filter_src_rate_ = 0;
     AVSampleFormat filter_src_fmt_ = AV_SAMPLE_FMT_NONE;
