@@ -272,7 +272,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     video_widget_ = new video_widget(video_frame_);
     video_widget_->setObjectName("videoSurface");
     video_widget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    video_widget_->setContextMenuPolicy(Qt::CustomContextMenu);
+    video_widget_->setContextMenuPolicy(Qt::NoContextMenu);
     video_frame_layout_->addWidget(video_widget_, 1);
     content_layout->addWidget(video_frame_, 1);
 
@@ -325,7 +325,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     playlist_view_->setExpandsOnDoubleClick(false);
     playlist_view_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     playlist_view_->setSelectionMode(QAbstractItemView::ExtendedSelection);
-    playlist_view_->setContextMenuPolicy(Qt::CustomContextMenu);
+    playlist_view_->setContextMenuPolicy(Qt::NoContextMenu);
     playlist_layout->addWidget(playlist_view_, 1);
     playlist_panel_->hide();
     content_layout->addWidget(playlist_panel_);
@@ -531,37 +531,6 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     connect(btn_playlist_manage_, &QPushButton::clicked, this, [this]() { open_playlist_management_dialog(); });
     connect(playlist_view_, &QTreeWidget::itemDoubleClicked, this, &main_window::on_playlist_item_activated);
     connect(playlist_view_, &QTreeWidget::itemSelectionChanged, this, [this]() { update_playlist_header_buttons(); });
-    connect(playlist_view_, &QTreeWidget::customContextMenuRequested, this, &main_window::show_playlist_context_menu);
-    connect(video_widget_, &QWidget::customContextMenuRequested, this,
-            [this](const QPoint &pos)
-            {
-                QMenu menu(this);
-                QAction *open_action = menu.addAction("打开");
-                QAction *fullscreen_action = menu.addAction(is_video_fullscreen() ? "退出全屏" : "全屏");
-                QMenu *playback_rate_menu = menu.addMenu("播放速度");
-                for (double rate : {0.5, 0.75, 1.0, 1.25, 1.5, 2.0})
-                {
-                    QAction *rate_action = playback_rate_menu->addAction(format_playback_rate_text(rate));
-                    rate_action->setCheckable(true);
-                    rate_action->setChecked(std::abs(playback_rate_ - rate) < 0.0001);
-                    connect(rate_action,
-                            &QAction::triggered,
-                            this,
-                            [this, rate]()
-                            {
-                                set_playback_rate(rate);
-                            });
-                }
-                QAction *chosen = menu.exec(video_widget_->mapToGlobal(pos));
-                if (chosen == open_action)
-                {
-                    on_open_file();
-                }
-                else if (chosen == fullscreen_action)
-                {
-                    on_toggle_fullscreen();
-                }
-            });
 
     connect(volume_meter_, &volume_meter::value_changed, this, &main_window::on_volume_changed);
     connect(btn_title_minimize_, &QPushButton::clicked, this, &QWidget::showMinimized);
@@ -1479,69 +1448,6 @@ void main_window::set_active_playlist(const QString &playlist_id)
 }
 
 QString main_window::active_playlist_id() const { return playlist_store_.active_playlist_id(); }
-
-void main_window::show_playlist_context_menu(const QPoint &pos)
-{
-    if (playlist_view_ == nullptr)
-    {
-        return;
-    }
-
-    QTreeWidgetItem *item = playlist_view_->itemAt(pos);
-    QMenu menu(this);
-    if (item == nullptr)
-    {
-        QAction *open_action = menu.addAction("打开文件到当前播放列表");
-        QAction *manage_action = menu.addAction("管理播放列表");
-        QAction *chosen = menu.exec(playlist_view_->viewport()->mapToGlobal(pos));
-        if (chosen == open_action)
-        {
-            on_open_file();
-        }
-        else if (chosen == manage_action)
-        {
-            open_playlist_management_dialog();
-        }
-        return;
-    }
-
-    const QString playlist_id = playlist_id_for_item(item);
-    if (playlist_id.isEmpty())
-    {
-        return;
-    }
-
-    if (!item->isSelected())
-    {
-        playlist_view_->clearSelection();
-        item->setSelected(true);
-        playlist_view_->setCurrentItem(item);
-    }
-
-    if (is_playlist_item(item))
-    {
-        QAction *manage_action = menu.addAction("管理播放列表");
-
-        QAction *chosen = menu.exec(playlist_view_->viewport()->mapToGlobal(pos));
-        if (chosen == manage_action)
-        {
-            open_playlist_management_dialog();
-        }
-        return;
-    }
-
-    QAction *play_action = menu.addAction("播放");
-    QAction *manage_action = menu.addAction("管理播放列表");
-    QAction *chosen = menu.exec(playlist_view_->viewport()->mapToGlobal(pos));
-    if (chosen == play_action)
-    {
-        play_playlist_item(playlist_id, playlist_row_for_item(item));
-    }
-    else if (chosen == manage_action)
-    {
-        open_playlist_management_dialog();
-    }
-}
 
 QString main_window::selected_playlist_target_id() const
 {
