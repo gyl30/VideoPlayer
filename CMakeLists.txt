@@ -98,7 +98,7 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGLWidgets OpenGL Svg)
 find_package(SDL2 REQUIRED)
 find_package(PkgConfig REQUIRED)
 
-pkg_check_modules(FFMPEG REQUIRED 
+pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
     libavformat 
     libavcodec 
     libavutil 
@@ -155,5 +155,5 @@ target_link_libraries(VideoPlayer PRIVATE
     Qt6::OpenGL
     Qt6::Svg
     SDL2::SDL2
-    ${FFMPEG_LIBRARIES}
+    PkgConfig::FFMPEG
 )
