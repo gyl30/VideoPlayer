@@ -10,6 +10,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
+#include <QComboBox>
 #include <QSlider>
 #include <QLabel>
 #include <QFrame>
@@ -33,6 +34,7 @@
 #include "media_objects.h"
 #include "sdl_audio_backend.h"
 #include "video_sync_thread.h"
+#include "playlist_store.h"
 
 class main_window : public QMainWindow
 {
@@ -74,6 +76,10 @@ class main_window : public QMainWindow
     void play_playlist_row(int row);
     void update_playlist_buttons();
     void finish_playback();
+    void refresh_playlist_selector();
+    void refresh_playlist_view();
+    void set_active_playlist(const QString &playlist_id);
+    QString active_playlist_id() const;
     void set_media_title_text(const QString &text);
     void update_media_title_text();
     void on_title_scroll_tick();
@@ -111,6 +117,7 @@ class main_window : public QMainWindow
 
     QFrame *video_frame_ = nullptr;
     QFrame *playlist_panel_ = nullptr;
+    QComboBox *cmb_playlists_ = nullptr;
     QListWidget *playlist_view_ = nullptr;
     QLabel *lbl_playlist_count_ = nullptr;
 
@@ -143,6 +150,7 @@ class main_window : public QMainWindow
     int media_title_scroll_offset_ = 0;
     int last_saved_progress_second_ = -1;
     double playback_rate_ = 1.0;
+    playlist_store playlist_store_;
 
     bool playing_ = false;
     bool paused_ = false;

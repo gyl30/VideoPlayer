@@ -6,6 +6,7 @@
 #include <QIcon>
 #include <QKeySequence>
 #include <QMouseEvent>
+#include <QSignalBlocker>
 #include <QSettings>
 #include <QCoreApplication>
 #include <QStyle>
@@ -264,6 +265,10 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     playlist_header_layout->addWidget(lbl_playlist_count_);
     playlist_layout->addLayout(playlist_header_layout);
 
+    cmb_playlists_ = new QComboBox(this);
+    cmb_playlists_->setObjectName("playlistSelector");
+    playlist_layout->addWidget(cmb_playlists_);
+
     playlist_view_ = new QListWidget(this);
     playlist_view_->setObjectName("playlistView");
     playlist_view_->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -430,10 +435,20 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
             });
 
     connect(btn_playlist_, &QPushButton::clicked, this, &main_window::on_toggle_playlist);
+    connect(cmb_playlists_, &QComboBox::currentIndexChanged, this,
+            [this](int index)
+            {
+                if (index < 0)
+                {
+                    return;
+                }
+                set_active_playlist(cmb_playlists_->itemData(index).toString());
+            });
     connect(playlist_view_, &QListWidget::itemDoubleClicked, this, &main_window::on_playlist_item_activated);
     connect(playlist_view_, &QListWidget::currentRowChanged, this,
-            [this](int)
+            [this](int row)
             {
+                playlist_store_.set_current_row(active_playlist_id(), row);
                 update_playlist_buttons();
                 save_playlist_state();
             });
@@ -720,6 +735,28 @@ void main_window::init_styles()
         "    color: #eef4fa;"
         "    font-size: 14px;"
         "    font-weight: 600;"
+        "}"
+        "QComboBox#playlistSelector {"
+        "    background: #11273c;"
+        "    border: 1px solid #1d4f77;"
+        "    border-radius: 4px;"
+        "    color: #eef4fa;"
+        "    min-height: 30px;"
+        "    padding: 0 24px 0 8px;"
+        "}"
+        "QComboBox#playlistSelector:hover {"
+        "    border-color: #2d78ad;"
+        "}"
+        "QComboBox#playlistSelector::drop-down {"
+        "    border: none;"
+        "    width: 22px;"
+        "}"
+        "QComboBox#playlistSelector QAbstractItemView {"
+        "    background: #0b1929;"
+        "    border: 1px solid #16385d;"
+        "    color: #eef4fa;"
+        "    selection-background-color: #174a68;"
+        "    selection-color: #ffffff;"
         "}"
         "QListWidget#playlistView {"
         "    background: transparent;"
@@ -1267,6 +1304,74 @@ void main_window::update_volume_icon(int value)
     lbl_vol_icon_low_->setPixmap(QIcon(":/icons/volume-up.svg").pixmap(16, 16));
 }
 
+void main_window::refresh_playlist_selector()
+{
+    if (cmb_playlists_ == nullptr)
+    {
+        return;
+    }
+
+    QSignalBlocker blocker(cmb_playlists_);
+    cmb_playlists_->clear();
+    for (const playlist_entry &entry : playlist_store_.playlists())
+    {
+        cmb_playlists_->addItem(entry.name, entry.id);
+    }
+
+    const int active_index = playlist_store_.active_index();
+    if (active_index >= 0)
+    {
+        cmb_playlists_->setCurrentIndex(active_index);
+    }
+}
+
+void main_window::refresh_playlist_view()
+{
+    if (playlist_view_ == nullptr || lbl_playlist_count_ == nullptr)
+    {
+        return;
+    }
+
+    QSignalBlocker blocker(playlist_view_);
+    playlist_view_->clear();
+
+    const playlist_entry *entry = playlist_store_.active_playlist();
+    const int file_count = entry == nullptr ? 0 : static_cast<int>(entry->paths.size());
+    lbl_playlist_count_->setText(QString("%1 个文件").arg(file_count));
+
+    if (entry == nullptr || entry->paths.isEmpty())
+    {
+        auto *placeholder = new QListWidgetItem("打开文件后显示在这里", playlist_view_);
+        placeholder->setFlags(Qt::NoItemFlags);
+        return;
+    }
+
+    for (const QString &path : entry->paths)
+    {
+        auto *item = new QListWidgetItem(QFileInfo(path).fileName(), playlist_view_);
+        item->setData(Qt::UserRole, path);
+        item->setToolTip(path);
+    }
+
+    const int current_row = qBound(0, entry->current_row, file_count - 1);
+    playlist_view_->setCurrentRow(current_row);
+}
+
+void main_window::set_active_playlist(const QString &playlist_id)
+{
+    if (playlist_id.isEmpty() || !playlist_store_.set_active_playlist(playlist_id))
+    {
+        return;
+    }
+
+    refresh_playlist_selector();
+    refresh_playlist_view();
+    update_playlist_buttons();
+    save_playlist_state();
+}
+
+QString main_window::active_playlist_id() const { return playlist_store_.active_playlist_id(); }
+
 void main_window::restore_persistent_state()
 {
     QSettings settings(k_settings_org, k_settings_app);
@@ -1289,38 +1394,9 @@ void main_window::restore_persistent_state()
         volume_meter_->setValue(saved_volume);
     }
 
-    if (playlist_view_ == nullptr || lbl_playlist_count_ == nullptr)
-    {
-        return;
-    }
-
-    const QStringList saved_paths = settings.value("playlist/paths").toStringList();
-    playlist_view_->clear();
-
-    for (const QString &saved_path : saved_paths)
-    {
-        const QString normalized_path = normalize_media_path(saved_path);
-        if (normalized_path.isEmpty())
-        {
-            continue;
-        }
-
-        auto *item = new QListWidgetItem(QFileInfo(normalized_path).fileName(), playlist_view_);
-        item->setData(Qt::UserRole, normalized_path);
-        item->setToolTip(normalized_path);
-    }
-
-    if (playlist_view_->count() == 0)
-    {
-        playlist_view_->addItem("打开文件后显示在这里");
-        lbl_playlist_count_->setText("0 个文件");
-        return;
-    }
-
-    lbl_playlist_count_->setText(QString("%1 个文件").arg(playlist_view_->count()));
-
-    const int saved_row = settings.value("playlist/currentRow", 0).toInt();
-    playlist_view_->setCurrentRow(qBound(0, saved_row, playlist_view_->count() - 1));
+    playlist_store_.load(settings);
+    refresh_playlist_selector();
+    refresh_playlist_view();
 }
 
 void main_window::save_persistent_state()
@@ -1351,30 +1427,8 @@ void main_window::save_persistent_state()
 
 void main_window::save_playlist_state()
 {
-    if (playlist_view_ == nullptr)
-    {
-        return;
-    }
-
-    QStringList playlist_paths;
-    for (int i = 0; i < playlist_view_->count(); ++i)
-    {
-        QListWidgetItem *item = playlist_view_->item(i);
-        if (item == nullptr)
-        {
-            continue;
-        }
-
-        const QString path = item->data(Qt::UserRole).toString();
-        if (!path.isEmpty())
-        {
-            playlist_paths.append(path);
-        }
-    }
-
     QSettings settings(k_settings_org, k_settings_app);
-    settings.setValue("playlist/paths", playlist_paths);
-    settings.setValue("playlist/currentRow", playlist_paths.isEmpty() ? -1 : playlist_view_->currentRow());
+    playlist_store_.save(settings);
 }
 
 void main_window::save_volume_state(int value)
@@ -1545,32 +1599,20 @@ void main_window::on_open_file()
         return;
     }
 
-    if (playlist_view_->count() == 1 && playlist_view_->item(0)->data(Qt::UserRole).toString().isEmpty())
-    {
-        playlist_view_->clear();
-    }
-
+    const QString playlist_id = active_playlist_id();
     int target_row = -1;
     for (const QString &filename : filenames)
     {
         const QString normalized_path = normalize_media_path(filename);
         LOG_INFO("open file selected {}", normalized_path.toStdString());
-        int row = -1;
-        for (int i = 0; i < playlist_view_->count(); ++i)
+        int row = playlist_store_.index_of_path(playlist_id, normalized_path);
+        if (row < 0 && playlist_store_.add_path(playlist_id, normalized_path))
         {
-            if (playlist_view_->item(i)->data(Qt::UserRole).toString() == normalized_path)
+            const playlist_entry *entry = playlist_store_.playlist_by_id(playlist_id);
+            if (entry != nullptr)
             {
-                row = i;
-                break;
+                row = static_cast<int>(entry->paths.size() - 1);
             }
-        }
-
-        if (row < 0)
-        {
-            auto *item = new QListWidgetItem(QFileInfo(normalized_path).fileName(), playlist_view_);
-            item->setData(Qt::UserRole, normalized_path);
-            item->setToolTip(normalized_path);
-            row = playlist_view_->count() - 1;
         }
 
         if (target_row < 0)
@@ -1579,7 +1621,7 @@ void main_window::on_open_file()
         }
     }
 
-    lbl_playlist_count_->setText(QString("%1 个文件").arg(playlist_view_->count()));
+    refresh_playlist_view();
     save_playlist_state();
     if (target_row >= 0)
     {
