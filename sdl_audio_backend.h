@@ -46,15 +46,18 @@ class sdl_audio_backend
         size_t offset = 0;
         double pts = 0.0;
         int serial = -1;
+        double playback_rate = 1.0;
     };
 
     static void audio_callback_static(void *userdata, Uint8 *stream, int len);
     void audio_callback(Uint8 *stream, int len);
     void process_audio();
     void clear_pcm_queue();
+    void trim_pcm_queue_for_rate_change();
     void destroy_filter_graph();
     bool configure_filter_graph(const AVFrame *frame, double playback_rate);
     bool filter_matches_frame(const AVFrame *frame) const;
+    bool update_filter_playback_rate(double playback_rate);
 
    private:
     static constexpr int k_output_sample_rate = 44100;
@@ -78,6 +81,7 @@ class sdl_audio_backend
     AVFilterGraph *filter_graph_ = nullptr;
     AVFilterContext *buffersrc_ctx_ = nullptr;
     AVFilterContext *buffersink_ctx_ = nullptr;
+    AVFilterContext *tempo_ctx_ = nullptr;
     audio_channel_layout filter_src_layout_{};
     int filter_src_rate_ = 0;
     AVSampleFormat filter_src_fmt_ = AV_SAMPLE_FMT_NONE;

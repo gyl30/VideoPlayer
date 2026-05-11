@@ -120,7 +120,7 @@ void sdl_audio_backend::set_playback_rate(double rate)
     LOG_INFO("sdl audio backend playback rate {} -> {}", current_rate, normalized_rate);
     playback_rate_.store(normalized_rate);
     config_generation_.fetch_add(1);
-    clear_pcm_queue();
+    trim_pcm_queue_for_rate_change();
     pcm_cond_.notify_all();
 }
 
@@ -192,6 +192,10 @@ void sdl_audio_backend::audio_callback(Uint8 *stream, int len)
 
         if (clock_ != nullptr)
         {
+            if (std::abs(clock_->rate() - chunk.playback_rate) >= 0.0001)
+            {
+                clock_->set_rate(chunk.playback_rate);
+            }
             const double played_frames = static_cast<double>(chunk.offset / static_cast<size_t>(k_output_bytes_per_frame));
             const double pts = chunk.pts + (played_frames / static_cast<double>(k_output_sample_rate));
             clock_->set(pts, chunk.serial);
@@ -269,19 +273,29 @@ void sdl_audio_backend::process_audio()
         const uint64_t target_generation = config_generation_.load();
         if (target_generation != active_generation)
         {
-            clear_pcm_queue();
-            destroy_filter_graph();
             active_generation = target_generation;
         }
 
         const double playback_rate = playback_rate_.load();
-        if (filter_graph_ == nullptr || !filter_matches_frame(frame->raw()) || std::abs(filter_playback_rate_ - playback_rate) >= 0.0001)
+        if (filter_graph_ == nullptr || !filter_matches_frame(frame->raw()))
         {
             destroy_filter_graph();
             if (!configure_filter_graph(frame->raw(), playback_rate))
             {
                 LOG_ERROR("audio process thread failed to configure filter graph");
                 continue;
+            }
+        }
+        else if (std::abs(filter_playback_rate_ - playback_rate) >= 0.0001)
+        {
+            if (!update_filter_playback_rate(playback_rate))
+            {
+                destroy_filter_graph();
+                if (!configure_filter_graph(frame->raw(), playback_rate))
+                {
+                    LOG_ERROR("audio process thread failed to reconfigure filter graph");
+                    continue;
+                }
             }
         }
 
@@ -340,13 +354,12 @@ void sdl_audio_backend::process_audio()
             chunk.offset = 0;
             chunk.pts = frame_pts_seconds(filtered_frame, k_filter_time_base);
             chunk.serial = frame->serial();
+            chunk.playback_rate = playback_rate;
             av_frame_free(&filtered_frame);
 
             const uint64_t pending_generation = config_generation_.load();
             if (pending_generation != active_generation)
             {
-                clear_pcm_queue();
-                destroy_filter_graph();
                 active_generation = pending_generation;
                 break;
             }
@@ -375,10 +388,34 @@ void sdl_audio_backend::clear_pcm_queue()
     pcm_cond_.notify_all();
 }
 
+void sdl_audio_backend::trim_pcm_queue_for_rate_change()
+{
+    std::lock_guard<std::mutex> lock(pcm_mutex_);
+    if (pcm_queue_.empty())
+    {
+        queued_pcm_bytes_ = 0;
+        pcm_cond_.notify_all();
+        return;
+    }
+
+    pcm_chunk current = std::move(pcm_queue_.front());
+    pcm_queue_.clear();
+    queued_pcm_bytes_ = 0;
+
+    if (current.offset < current.data.size())
+    {
+        queued_pcm_bytes_ = current.data.size();
+        pcm_queue_.push_back(std::move(current));
+    }
+
+    pcm_cond_.notify_all();
+}
+
 void sdl_audio_backend::destroy_filter_graph()
 {
     buffersrc_ctx_ = nullptr;
     buffersink_ctx_ = nullptr;
+    tempo_ctx_ = nullptr;
 
     if (filter_graph_ != nullptr)
     {
@@ -527,6 +564,7 @@ bool sdl_audio_backend::configure_filter_graph(const AVFrame *frame, double play
         return false;
     }
 
+    tempo_ctx_ = tempo_ctx;
 #if LIBAVUTIL_VERSION_MAJOR >= 57
     av_channel_layout_uninit(&filter_src_layout_);
     av_channel_layout_copy(&filter_src_layout_, &src_layout);
@@ -538,6 +576,28 @@ bool sdl_audio_backend::configure_filter_graph(const AVFrame *frame, double play
     filter_src_fmt_ = static_cast<AVSampleFormat>(frame->format);
     filter_playback_rate_ = playback_rate;
     LOG_INFO("audio filter graph configured playback rate {}", playback_rate);
+    return true;
+}
+
+bool sdl_audio_backend::update_filter_playback_rate(double playback_rate)
+{
+    if (tempo_ctx_ == nullptr)
+    {
+        return false;
+    }
+
+    char tempo_arg[32] = {0};
+    std::snprintf(tempo_arg, sizeof(tempo_arg), "%.6f", playback_rate);
+
+    const int ret = avfilter_process_command(tempo_ctx_, "tempo", tempo_arg, nullptr, 0, 0);
+    if (ret < 0)
+    {
+        LOG_ERROR("audio filter graph failed to update atempo code {}", ret);
+        return false;
+    }
+
+    filter_playback_rate_ = playback_rate;
+    LOG_INFO("audio filter graph updated playback rate {}", playback_rate);
     return true;
 }
 

@@ -1160,13 +1160,13 @@ void main_window::set_playback_rate(double rate)
         btn_playback_rate_->setText(format_playback_rate_text(playback_rate_));
     }
 
-    if (clock_ != nullptr)
-    {
-        clock_->set_rate(playback_rate_);
-    }
     if (audio_backend_ != nullptr)
     {
         audio_backend_->set_playback_rate(playback_rate_);
+    }
+    else if (clock_ != nullptr)
+    {
+        clock_->set_rate(playback_rate_);
     }
 }
 
