@@ -58,9 +58,12 @@ void demuxer::set_seek_cb(std::function<void(double)> cb) { seek_cb_ = std::move
     return static_cast<double>(fmt_ctx_->duration) / AV_TIME_BASE;
 }
 
+[[nodiscard]] bool demuxer::eof_reached() const { return eof_reached_.load(); }
+
 void demuxer::seek(double seconds)
 {
     LOG_INFO("demuxer seek requested to {}", seconds);
+    eof_reached_.store(false);
     if (video_queue_ != nullptr)
     {
         video_queue_->add_serial();
@@ -88,6 +91,7 @@ bool demuxer::open(const std::string &url, safe_queue<std::shared_ptr<media_pack
     video_queue_ = v_q;
     audio_queue_ = a_q;
     abort_.store(false);
+    eof_reached_.store(false);
 
     fmt_ctx_ = avformat_alloc_context();
     if (fmt_ctx_ == nullptr)
@@ -186,6 +190,7 @@ void demuxer::run()
                 }
 
                 eof_reached = false;
+                eof_reached_.store(false);
             }
         }
 
@@ -203,6 +208,7 @@ void demuxer::run()
             {
                 LOG_INFO("demuxer reached end of file");
                 eof_reached = true;
+                eof_reached_.store(true);
 
                 if (video_queue_ != nullptr)
                 {

@@ -1726,7 +1726,14 @@ void main_window::on_update_ui()
         return;
     }
 
-    const double current = clock_->get();
+    const double raw_current = clock_->get();
+    const double current = duration_ > 0.0 ? std::clamp(raw_current, 0.0, duration_) : raw_current;
+
+    if (demuxer_ != nullptr && demuxer_->eof_reached() && duration_ > 0.0 && current >= duration_ - 0.1)
+    {
+        finish_playback();
+        return;
+    }
 
     if (!slider_seek_->isSliderDown())
     {
@@ -1786,6 +1793,19 @@ void main_window::update_playlist_buttons()
     btn_backward_->setEnabled(true);
     btn_forward_->setEnabled(true);
     btn_playlist_->setEnabled(true);
+}
+
+void main_window::finish_playback()
+{
+    LOG_INFO("playback reached end resetting ui");
+    stop_play();
+
+    const int end_value = qMax(0, static_cast<int>(duration_));
+    slider_seek_->setValue(end_value);
+    slider_seek_->setEnabled(false);
+    lbl_time_->setText(QString("%1 / %2").arg(format_time(duration_), format_time(duration_)));
+    btn_play_pause_->setIcon(QIcon(":/icons/play.svg"));
+    btn_play_pause_->setToolTip("播放");
 }
 
 void main_window::stop_play()

@@ -32,6 +32,7 @@ class demuxer
     [[nodiscard]] double duration() const;
     [[nodiscard]] AVRational time_base(int stream_index) const;
     [[nodiscard]] AVCodecParameters *codec_par(int stream_index) const;
+    [[nodiscard]] bool eof_reached() const;
 
    private:
     static int interrupt_cb(void *ctx);
@@ -44,6 +45,7 @@ class demuxer
     std::atomic<double> seek_req_{-1.0};
 
     std::atomic<bool> abort_{false};
+    std::atomic<bool> eof_reached_{false};
     safe_queue<std::shared_ptr<media_packet>> *video_queue_ = nullptr;
     safe_queue<std::shared_ptr<media_packet>> *audio_queue_ = nullptr;
 

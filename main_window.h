@@ -73,6 +73,7 @@ class main_window : public QMainWindow
     void update_title_maximize_button();
     void play_playlist_row(int row);
     void update_playlist_buttons();
+    void finish_playback();
     void set_media_title_text(const QString &text);
     void update_media_title_text();
     void on_title_scroll_tick();
