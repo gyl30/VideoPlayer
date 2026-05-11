@@ -4,7 +4,6 @@
 #include <QFileInfo>
 #include <QFontMetrics>
 #include <QIcon>
-#include <QInputDialog>
 #include <QKeySequence>
 #include <QMouseEvent>
 #include <QSignalBlocker>
@@ -18,6 +17,7 @@
 #include <cmath>
 #include "log.h"
 #include "main_window.h"
+#include "playlist_management_dialog.h"
 #include "volumemeter.h"
 
 namespace
@@ -1338,19 +1338,6 @@ void main_window::set_active_playlist(const QString &playlist_id)
 
 QString main_window::active_playlist_id() const { return playlist_store_.active_playlist_id(); }
 
-void main_window::on_create_playlist()
-{
-    bool accepted = false;
-    const QString name = QInputDialog::getText(this, "新建播放列表", "播放列表名称：", QLineEdit::Normal, "", &accepted);
-    if (!accepted)
-    {
-        return;
-    }
-
-    const QString playlist_id = playlist_store_.create_playlist(name);
-    set_active_playlist(playlist_id);
-}
-
 void main_window::show_playlist_context_menu(const QPoint &pos)
 {
     if (playlist_view_ == nullptr)
@@ -1363,16 +1350,15 @@ void main_window::show_playlist_context_menu(const QPoint &pos)
     if (item == nullptr)
     {
         QAction *open_action = menu.addAction("打开文件到当前播放列表");
-        menu.addSeparator();
-        QAction *create_action = menu.addAction("新建播放列表");
+        QAction *manage_action = menu.addAction("管理播放列表");
         QAction *chosen = menu.exec(playlist_view_->viewport()->mapToGlobal(pos));
         if (chosen == open_action)
         {
             on_open_file();
         }
-        else if (chosen == create_action)
+        else if (chosen == manage_action)
         {
-            on_create_playlist();
+            open_playlist_management_dialog();
         }
         return;
     }
@@ -1392,107 +1378,88 @@ void main_window::show_playlist_context_menu(const QPoint &pos)
 
     if (is_playlist_item(item))
     {
-        QAction *rename_action = menu.addAction("重命名播放列表");
-        QAction *delete_action = menu.addAction("删除播放列表");
-        delete_action->setEnabled(playlist_store_.playlist_count() > 1);
+        QAction *manage_action = menu.addAction("管理播放列表");
 
         QAction *chosen = menu.exec(playlist_view_->viewport()->mapToGlobal(pos));
-        if (chosen == rename_action)
+        if (chosen == manage_action)
         {
-            on_rename_playlist(playlist_id);
-        }
-        else if (chosen == delete_action)
-        {
-            on_delete_playlist(playlist_id);
+            open_playlist_management_dialog();
         }
         return;
     }
 
     QAction *play_action = menu.addAction("播放");
-    QAction *remove_action = menu.addAction("从播放列表移除");
+    QAction *manage_action = menu.addAction("管理播放列表");
     QAction *chosen = menu.exec(playlist_view_->viewport()->mapToGlobal(pos));
-    if (!playlist_store_.set_active_playlist(playlist_id))
-    {
-        return;
-    }
-
     if (chosen == play_action)
     {
-        play_playlist_row(playlist_row_for_item(item));
+        play_playlist_item(playlist_id, playlist_row_for_item(item));
     }
-    else if (chosen == remove_action)
+    else if (chosen == manage_action)
     {
-        on_remove_selected_playlist_rows(playlist_id);
+        open_playlist_management_dialog();
     }
 }
 
-void main_window::on_rename_playlist(const QString &playlist_id)
+void main_window::open_playlist_management_dialog()
 {
-    const playlist_entry *entry = playlist_store_.playlist_by_id(playlist_id);
-    if (entry == nullptr)
+    playlist_management_dialog dialog(playlist_store_, this);
+    if (dialog.exec() != QDialog::Accepted)
     {
         return;
     }
 
-    bool accepted = false;
-    const QString name =
-        QInputDialog::getText(this, "重命名播放列表", "播放列表名称：", QLineEdit::Normal, entry->name, &accepted);
-    if (!accepted || !playlist_store_.rename_playlist(entry->id, name))
-    {
-        return;
-    }
-
-    refresh_playlist_view();
-    save_playlist_state();
+    apply_playlist_management_changes(dialog.result_store());
 }
 
-void main_window::on_delete_playlist(const QString &playlist_id)
+void main_window::apply_playlist_management_changes(const playlist_store &store)
 {
-    const playlist_entry *entry = playlist_store_.playlist_by_id(playlist_id);
-    if (entry == nullptr)
-    {
-        return;
-    }
+    const QString old_active_playlist_id = active_playlist_id();
+    playlist_store_ = store;
 
-    if (playlist_store_.playlist_count() <= 1)
+    if (playing_ && !current_media_path_.isEmpty())
     {
-        QMessageBox::information(this, "提示", "至少保留一个播放列表");
-        return;
-    }
+        QString matched_playlist_id;
+        int matched_row = -1;
 
-    const auto answer =
-        QMessageBox::question(this, "删除播放列表", QString("确定删除“%1”吗？").arg(entry->name), QMessageBox::Yes | QMessageBox::No);
-    if (answer != QMessageBox::Yes || !playlist_store_.remove_playlist(entry->id))
-    {
-        return;
-    }
-
-    refresh_playlist_view();
-    update_playlist_buttons();
-    save_playlist_state();
-}
-
-void main_window::on_remove_selected_playlist_rows(const QString &playlist_id)
-{
-    if (playlist_view_ == nullptr)
-    {
-        return;
-    }
-
-    QList<int> rows;
-    const QList<QTreeWidgetItem *> items = playlist_view_->selectedItems();
-    for (QTreeWidgetItem *item : items)
-    {
-        if (!is_playlist_file_item(item) || playlist_id_for_item(item) != playlist_id)
+        if (!current_playback_playlist_id_.isEmpty())
         {
-            continue;
+            matched_row = playlist_store_.index_of_path(current_playback_playlist_id_, current_media_path_);
+            if (matched_row >= 0)
+            {
+                matched_playlist_id = current_playback_playlist_id_;
+            }
         }
-        rows.append(playlist_row_for_item(item));
-    }
 
-    if (rows.isEmpty() || !playlist_store_.remove_rows(playlist_id, rows))
+        if (matched_playlist_id.isEmpty())
+        {
+            for (const playlist_entry &entry : playlist_store_.playlists())
+            {
+                const int row = playlist_store_.index_of_path(entry.id, current_media_path_);
+                if (row >= 0)
+                {
+                    matched_playlist_id = entry.id;
+                    matched_row = row;
+                    break;
+                }
+            }
+        }
+
+        current_playback_playlist_id_ = matched_playlist_id;
+        current_playback_row_ = matched_row;
+        if (!matched_playlist_id.isEmpty())
+        {
+            playlist_store_.set_active_playlist(matched_playlist_id);
+            playlist_store_.set_current_row(matched_playlist_id, matched_row);
+        }
+        else if (playlist_store_.playlist_by_id(old_active_playlist_id) != nullptr)
+        {
+            playlist_store_.set_active_playlist(old_active_playlist_id);
+        }
+    }
+    else if (playlist_store_.playlist_by_id(old_active_playlist_id) != nullptr)
     {
-        return;
+        playlist_store_.set_active_playlist(old_active_playlist_id);
     }
 
     refresh_playlist_view();
@@ -1530,17 +1497,10 @@ int main_window::playlist_row_for_item(const QTreeWidgetItem *item) const
 
 QString main_window::playback_playlist_id() const
 {
-    return current_playback_playlist_id_.isEmpty() ? active_playlist_id() : current_playback_playlist_id_;
+    return current_playback_playlist_id_;
 }
 
-int main_window::playback_playlist_row() const
-{
-    if (current_playback_row_ >= 0)
-    {
-        return current_playback_row_;
-    }
-    return playlist_store_.current_row(playback_playlist_id());
-}
+int main_window::playback_playlist_row() const { return current_playback_row_; }
 
 void main_window::restore_persistent_state()
 {
@@ -1859,18 +1819,19 @@ void main_window::on_toggle_playlist()
 
 void main_window::on_play_previous()
 {
-    const int row = playback_playlist_row();
+    const QString playlist_id = playing_ ? playback_playlist_id() : active_playlist_id();
+    const int row = playing_ ? playback_playlist_row() : playlist_store_.current_row(playlist_id);
     if (row > 0)
     {
-        play_playlist_item(playback_playlist_id(), row - 1);
+        play_playlist_item(playlist_id, row - 1);
     }
 }
 
 void main_window::on_play_next()
 {
-    const QString playlist_id = playback_playlist_id();
+    const QString playlist_id = playing_ ? playback_playlist_id() : active_playlist_id();
     const playlist_entry *entry = playlist_store_.playlist_by_id(playlist_id);
-    const int row = playback_playlist_row();
+    const int row = playing_ ? playback_playlist_row() : playlist_store_.current_row(playlist_id);
     if (entry != nullptr && row >= 0 && row + 1 < entry->paths.size())
     {
         play_playlist_item(playlist_id, row + 1);
