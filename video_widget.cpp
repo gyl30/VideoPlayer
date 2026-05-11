@@ -102,17 +102,21 @@ void video_widget::paintGL()
         return;
     }
 
-    if (current_frame_->raw()->width != tex_width_ || current_frame_->raw()->height != tex_height_)
+    auto *raw = current_frame_->raw();
+    const int chroma_width = (raw->width + 1) / 2;
+    const int chroma_height = (raw->height + 1) / 2;
+
+    if (raw->width != tex_width_ || raw->height != tex_height_)
     {
-        tex_width_ = current_frame_->raw()->width;
-        tex_height_ = current_frame_->raw()->height;
+        tex_width_ = raw->width;
+        tex_height_ = raw->height;
         LOG_INFO("video widget texture resize to {}x{}", tex_width_, tex_height_);
 
         for (int i = 0; i < 3; i++)
         {
             glBindTexture(GL_TEXTURE_2D, textures_[i]);
-            const int w = (i == 0) ? tex_width_ : tex_width_ / 2;
-            const int h = (i == 0) ? tex_height_ : tex_height_ / 2;
+            const int w = (i == 0) ? tex_width_ : chroma_width;
+            const int h = (i == 0) ? tex_height_ : chroma_height;
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -126,17 +130,21 @@ void video_widget::paintGL()
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, textures_[0]);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tex_width_, tex_height_, GL_RED, GL_UNSIGNED_BYTE, current_frame_->raw()->data[0]);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, raw->linesize[0]);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tex_width_, tex_height_, GL_RED, GL_UNSIGNED_BYTE, raw->data[0]);
     program_->setUniformValue("texY", 0);
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, textures_[1]);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tex_width_ / 2, tex_height_ / 2, GL_RED, GL_UNSIGNED_BYTE, current_frame_->raw()->data[1]);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, raw->linesize[1]);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, chroma_width, chroma_height, GL_RED, GL_UNSIGNED_BYTE, raw->data[1]);
     program_->setUniformValue("texU", 1);
 
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, textures_[2]);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tex_width_ / 2, tex_height_ / 2, GL_RED, GL_UNSIGNED_BYTE, current_frame_->raw()->data[2]);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, raw->linesize[2]);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, chroma_width, chroma_height, GL_RED, GL_UNSIGNED_BYTE, raw->data[2]);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     program_->setUniformValue("texV", 2);
 
     if (matrix_uniform_loc_ >= 0)
