@@ -226,6 +226,8 @@ void sdl_audio_backend::process_audio()
     LOG_INFO("sdl audio backend process loop started");
 
     uint64_t active_generation = config_generation_.load();
+    double media_cursor = 0.0;
+    bool media_cursor_valid = false;
 
     while (!stop_.load())
     {
@@ -268,6 +270,8 @@ void sdl_audio_backend::process_audio()
             clear_pcm_queue();
             destroy_filter_graph();
             active_generation = config_generation_.load();
+            media_cursor = 0.0;
+            media_cursor_valid = false;
             continue;
         }
 
@@ -278,6 +282,11 @@ void sdl_audio_backend::process_audio()
         }
 
         const double playback_rate = playback_rate_.load();
+        if (!media_cursor_valid && frame->raw()->pts != AV_NOPTS_VALUE)
+        {
+            media_cursor = frame_pts_seconds(frame->raw(), time_base_);
+            media_cursor_valid = true;
+        }
         if (filter_graph_ == nullptr || !filter_matches_frame(frame->raw()))
         {
             destroy_filter_graph();
@@ -350,9 +359,15 @@ void sdl_audio_backend::process_audio()
             }
 
             const int total_frames = buffer_size / k_output_bytes_per_frame;
-            const AVRational output_time_base =
-                (filter_sink_time_base_.num > 0 && filter_sink_time_base_.den > 0) ? filter_sink_time_base_ : k_filter_time_base;
-            const double chunk_base_pts = frame_pts_seconds(filtered_frame, output_time_base);
+            double chunk_base_pts = media_cursor;
+            if (!media_cursor_valid)
+            {
+                const AVRational output_time_base =
+                    (filter_sink_time_base_.num > 0 && filter_sink_time_base_.den > 0) ? filter_sink_time_base_ : k_filter_time_base;
+                chunk_base_pts = frame_pts_seconds(filtered_frame, output_time_base);
+                media_cursor = chunk_base_pts;
+                media_cursor_valid = true;
+            }
             const uint8_t *chunk_src = filtered_frame->data[0];
             av_frame_free(&filtered_frame);
 
@@ -375,7 +390,7 @@ void sdl_audio_backend::process_audio()
                             static_cast<ptrdiff_t>(bytes_this_chunk),
                             chunk.data.data());
                 chunk.offset = 0;
-                chunk.pts = chunk_base_pts + (static_cast<double>(frames_offset) / static_cast<double>(k_output_sample_rate));
+                chunk.pts = chunk_base_pts;
                 chunk.serial = frame->serial();
                 chunk.playback_rate = playback_rate;
 
@@ -398,6 +413,8 @@ void sdl_audio_backend::process_audio()
                 pcm_queue_.push_back(std::move(chunk));
                 pcm_cond_.notify_all();
 
+                chunk_base_pts += (static_cast<double>(frames_this_chunk) / static_cast<double>(k_output_sample_rate)) * playback_rate;
+                media_cursor = chunk_base_pts;
                 frames_offset += frames_this_chunk;
             }
         }
