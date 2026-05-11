@@ -79,9 +79,9 @@ class main_window : public QMainWindow
     void set_active_playlist(const QString &playlist_id);
     QString active_playlist_id() const;
     void on_create_playlist();
-    void on_rename_playlist();
-    void on_delete_playlist();
-    void on_remove_selected_playlist_rows();
+    void on_rename_playlist(const QString &playlist_id);
+    void on_delete_playlist(const QString &playlist_id);
+    void on_remove_selected_playlist_rows(const QString &playlist_id);
     void show_playlist_context_menu(const QPoint &pos);
     bool is_playlist_item(const QTreeWidgetItem *item) const;
     bool is_playlist_file_item(const QTreeWidgetItem *item) const;
