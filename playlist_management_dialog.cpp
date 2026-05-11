@@ -1,9 +1,11 @@
 #include <QFileInfo>
+#include <QEvent>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QListWidgetItem>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include "playlist_name_dialog.h"
@@ -23,6 +25,8 @@ QListWidgetItem *create_playlist_item(const playlist_entry &entry)
 playlist_management_dialog::playlist_management_dialog(const playlist_store &store, QWidget *parent)
     : QDialog(parent), temp_store_(store)
 {
+    setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
+    setModal(true);
     setWindowTitle("管理播放列表");
     resize(820, 520);
     setObjectName("playlistManagementDialog");
@@ -30,6 +34,32 @@ playlist_management_dialog::playlist_management_dialog(const playlist_store &sto
         "QDialog#playlistManagementDialog {"
         "    background: #071b30;"
         "    color: #d8e0ea;"
+        "    border: 1px solid #16385d;"
+        "}"
+        "QWidget#dialogTitleBar {"
+        "    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1c6097, stop:0.48 #143d65, stop:1 #0a2036);"
+        "    border-bottom: 1px solid #06111c;"
+        "}"
+        "QLabel#dialogTitleLabel {"
+        "    color: #f2f7fb;"
+        "    font-size: 15px;"
+        "    font-weight: 700;"
+        "}"
+        "QPushButton#dialogCloseButton {"
+        "    background: transparent;"
+        "    border: none;"
+        "    border-radius: 0;"
+        "    min-width: 42px;"
+        "    max-width: 42px;"
+        "    min-height: 42px;"
+        "    max-height: 42px;"
+        "    padding: 0;"
+        "}"
+        "QPushButton#dialogCloseButton:hover {"
+        "    background: rgba(255, 255, 255, 0.12);"
+        "}"
+        "QPushButton#dialogCloseButton:pressed {"
+        "    background: rgba(0, 0, 0, 0.2);"
         "}"
         "QWidget#playlistSection {"
         "    background: #0b1929;"
@@ -91,6 +121,58 @@ playlist_management_dialog::playlist_management_dialog(const playlist_store &sto
 }
 
 const playlist_store &playlist_management_dialog::result_store() const { return temp_store_; }
+
+bool playlist_management_dialog::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched != title_bar_)
+    {
+        return QDialog::eventFilter(watched, event);
+    }
+
+    switch (event->type())
+    {
+        case QEvent::MouseButtonPress:
+        {
+            auto *mouse_event = static_cast<QMouseEvent *>(event);
+            if (mouse_event->button() == Qt::LeftButton)
+            {
+                dragging_title_bar_ = true;
+                drag_offset_ = mouse_event->globalPosition().toPoint() - frameGeometry().topLeft();
+                return true;
+            }
+            break;
+        }
+        case QEvent::MouseMove:
+        {
+            if (!dragging_title_bar_)
+            {
+                break;
+            }
+            auto *mouse_event = static_cast<QMouseEvent *>(event);
+            if (!(mouse_event->buttons() & Qt::LeftButton))
+            {
+                dragging_title_bar_ = false;
+                break;
+            }
+            move(mouse_event->globalPosition().toPoint() - drag_offset_);
+            return true;
+        }
+        case QEvent::MouseButtonRelease:
+        {
+            auto *mouse_event = static_cast<QMouseEvent *>(event);
+            if (mouse_event->button() == Qt::LeftButton)
+            {
+                dragging_title_bar_ = false;
+                return true;
+            }
+            break;
+        }
+        default:
+            break;
+    }
+
+    return QDialog::eventFilter(watched, event);
+}
 
 void playlist_management_dialog::on_source_playlist_changed()
 {
@@ -188,7 +270,34 @@ void playlist_management_dialog::on_remove_rows()
 
 void playlist_management_dialog::setup_ui()
 {
-    auto *main_layout = new QHBoxLayout(this);
+    auto *root_layout = new QVBoxLayout(this);
+    root_layout->setContentsMargins(0, 0, 0, 0);
+    root_layout->setSpacing(0);
+
+    title_bar_ = new QWidget(this);
+    title_bar_->setObjectName("dialogTitleBar");
+    title_bar_->setFixedHeight(42);
+    title_bar_->installEventFilter(this);
+
+    auto *title_layout = new QHBoxLayout(title_bar_);
+    title_layout->setContentsMargins(14, 0, 0, 0);
+    title_layout->setSpacing(0);
+
+    auto *title_label = new QLabel("管理播放列表", title_bar_);
+    title_label->setObjectName("dialogTitleLabel");
+
+    auto *btn_close = new QPushButton(QIcon(":/icons/title-close.svg"), QString(), title_bar_);
+    btn_close->setObjectName("dialogCloseButton");
+    btn_close->setCursor(Qt::PointingHandCursor);
+    btn_close->setIconSize(QSize(14, 14));
+    btn_close->setToolTip("关闭");
+
+    title_layout->addWidget(title_label);
+    title_layout->addStretch(1);
+    title_layout->addWidget(btn_close);
+
+    auto *body = new QWidget(this);
+    auto *main_layout = new QHBoxLayout(body);
     main_layout->setContentsMargins(12, 12, 12, 12);
     main_layout->setSpacing(10);
 
@@ -268,6 +377,11 @@ void playlist_management_dialog::setup_ui()
     main_layout->addWidget(source_panel, 2);
     main_layout->addWidget(action_panel, 1);
     main_layout->addWidget(target_panel, 2);
+
+    root_layout->addWidget(title_bar_);
+    root_layout->addWidget(body);
+
+    connect(btn_close, &QPushButton::clicked, this, &QDialog::reject);
 }
 
 void playlist_management_dialog::setup_connections()

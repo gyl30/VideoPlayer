@@ -2,12 +2,15 @@
 #define PLAYLIST_MANAGEMENT_DIALOG_H
 
 #include <QDialog>
+#include <QPoint>
 #include "playlist_store.h"
 
+class QEvent;
 class QListWidget;
 class QListWidgetItem;
 class QPushButton;
 class QString;
+class QWidget;
 
 class playlist_management_dialog : public QDialog
 {
@@ -18,6 +21,9 @@ class playlist_management_dialog : public QDialog
     ~playlist_management_dialog() override = default;
 
     [[nodiscard]] const playlist_store &result_store() const;
+
+   protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
    private slots:
     void on_source_playlist_changed();
@@ -53,6 +59,10 @@ class playlist_management_dialog : public QDialog
     QPushButton *btn_remove_ = nullptr;
     QPushButton *btn_apply_ = nullptr;
     QPushButton *btn_cancel_ = nullptr;
+    QWidget *title_bar_ = nullptr;
+
+    bool dragging_title_bar_ = false;
+    QPoint drag_offset_;
 };
 
 #endif
