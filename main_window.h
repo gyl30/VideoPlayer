@@ -10,11 +10,10 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
-#include <QComboBox>
 #include <QSlider>
 #include <QLabel>
 #include <QFrame>
-#include <QListWidget>
+#include <QTreeWidget>
 #include <QTimer>
 #include <QEvent>
 #include <QKeyEvent>
@@ -64,7 +63,7 @@ class main_window : public QMainWindow
     void on_toggle_playlist();
     void on_play_previous();
     void on_play_next();
-    void on_playlist_item_activated(QListWidgetItem *item);
+    void on_playlist_item_activated(QTreeWidgetItem *item, int column);
 
    private:
     void stop_play();
@@ -76,15 +75,18 @@ class main_window : public QMainWindow
     void play_playlist_row(int row);
     void update_playlist_buttons();
     void finish_playback();
-    void refresh_playlist_selector();
     void refresh_playlist_view();
     void set_active_playlist(const QString &playlist_id);
     QString active_playlist_id() const;
     void on_create_playlist();
-    void show_playlist_actions_menu();
     void on_rename_playlist();
     void on_delete_playlist();
     void on_remove_selected_playlist_rows();
+    void show_playlist_context_menu(const QPoint &pos);
+    bool is_playlist_item(const QTreeWidgetItem *item) const;
+    bool is_playlist_file_item(const QTreeWidgetItem *item) const;
+    QString playlist_id_for_item(const QTreeWidgetItem *item) const;
+    int playlist_row_for_item(const QTreeWidgetItem *item) const;
     void set_media_title_text(const QString &text);
     void update_media_title_text();
     void on_title_scroll_tick();
@@ -122,10 +124,7 @@ class main_window : public QMainWindow
 
     QFrame *video_frame_ = nullptr;
     QFrame *playlist_panel_ = nullptr;
-    QComboBox *cmb_playlists_ = nullptr;
-    QPushButton *btn_playlist_create_ = nullptr;
-    QPushButton *btn_playlist_actions_ = nullptr;
-    QListWidget *playlist_view_ = nullptr;
+    QTreeWidget *playlist_view_ = nullptr;
     QLabel *lbl_playlist_count_ = nullptr;
 
     QWidget *control_panel_ = nullptr;
