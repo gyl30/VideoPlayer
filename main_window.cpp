@@ -1262,6 +1262,18 @@ void main_window::restore_persistent_state()
 {
     QSettings settings(k_settings_org, k_settings_app);
 
+    const QRect saved_geometry = settings.value("window/geometry").toRect();
+    const bool saved_maximized = settings.value("window/maximized", false).toBool();
+    if (saved_geometry.isValid())
+    {
+        setGeometry(saved_geometry);
+    }
+    if (saved_maximized)
+    {
+        showMaximized();
+    }
+    update_title_maximize_button();
+
     if (volume_meter_ != nullptr)
     {
         const int saved_volume = qBound(0, settings.value("audio/volume", volume_meter_->value()).toInt(), 100);
@@ -1304,6 +1316,22 @@ void main_window::restore_persistent_state()
 
 void main_window::save_persistent_state()
 {
+    QSettings settings(k_settings_org, k_settings_app);
+    if (is_video_fullscreen() && fullscreen_restore_geometry_.isValid())
+    {
+        settings.setValue("window/geometry", fullscreen_restore_geometry_);
+        settings.setValue("window/maximized", fullscreen_restore_maximized_);
+    }
+    else
+    {
+        const QRect window_geometry = isMaximized() ? normalGeometry() : geometry();
+        if (window_geometry.isValid())
+        {
+            settings.setValue("window/geometry", window_geometry);
+        }
+        settings.setValue("window/maximized", isMaximized());
+    }
+
     save_current_playback_progress(true);
     save_playlist_state();
     if (volume_meter_ != nullptr)
