@@ -449,9 +449,17 @@ bool main_window::handle_window_resize(QObject *watched, QEvent *event)
         return false;
     }
 
+    if (event->type() != QEvent::MouseButtonPress && event->type() != QEvent::MouseMove && event->type() != QEvent::Leave)
+    {
+        return false;
+    }
+
     if (isMaximized() || is_video_fullscreen())
     {
-        widget->unsetCursor();
+        if (widget->testAttribute(Qt::WA_SetCursor))
+        {
+            widget->unsetCursor();
+        }
         return false;
     }
 
@@ -477,11 +485,18 @@ bool main_window::handle_window_resize(QObject *watched, QEvent *event)
             const Qt::Edges edges = hit_test_resize_edges(mouse_event->globalPosition().toPoint());
             if (edges == Qt::Edges{})
             {
-                widget->unsetCursor();
+                if (widget->testAttribute(Qt::WA_SetCursor))
+                {
+                    widget->unsetCursor();
+                }
             }
             else
             {
-                widget->setCursor(cursor_shape_for_edges(edges));
+                const Qt::CursorShape shape = cursor_shape_for_edges(edges);
+                if (widget->cursor().shape() != shape)
+                {
+                    widget->setCursor(shape);
+                }
             }
         }
         return false;
@@ -489,7 +504,10 @@ bool main_window::handle_window_resize(QObject *watched, QEvent *event)
 
     if (event->type() == QEvent::Leave)
     {
-        widget->unsetCursor();
+        if (widget->testAttribute(Qt::WA_SetCursor))
+        {
+            widget->unsetCursor();
+        }
     }
 
     return false;
