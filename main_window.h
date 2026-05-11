@@ -10,7 +10,6 @@
 #include <QSlider>
 #include <QLabel>
 #include <QFrame>
-#include <QComboBox>
 #include <QTreeWidget>
 #include <QTimer>
 #include <QEvent>
@@ -32,6 +31,8 @@
 #include "sdl_audio_backend.h"
 #include "video_sync_thread.h"
 #include "playlist_store.h"
+
+class QMenu;
 
 class main_window : public QMainWindow
 {
@@ -64,8 +65,7 @@ class main_window : public QMainWindow
     void on_playlist_item_activated(QTreeWidgetItem *item, int column);
     void on_audio_only_toggled(bool checked);
     void on_video_frame_ready(std::shared_ptr<media_frame> frame);
-    void on_add_files_to_selected_playlist();
-    void on_play_selected_playlist_file();
+    void on_create_playlist();
 
    private:
     void stop_play();
@@ -90,8 +90,6 @@ class main_window : public QMainWindow
     bool is_playlist_file_item(const QTreeWidgetItem *item) const;
     QString playlist_id_for_item(const QTreeWidgetItem *item) const;
     int playlist_row_for_item(const QTreeWidgetItem *item) const;
-    QString selected_playlist_target_id() const;
-    QTreeWidgetItem *selected_playlist_file_item() const;
     QString playback_playlist_id() const;
     int playback_playlist_row() const;
     void set_media_title_text(const QString &text);
@@ -99,6 +97,8 @@ class main_window : public QMainWindow
     void on_title_scroll_tick();
     void update_volume_icon(int value);
     void set_playback_rate(double rate);
+    void update_playback_rate_button();
+    void show_playback_rate_menu();
     void restore_persistent_state();
     void save_persistent_state();
     void save_playlist_state();
@@ -129,10 +129,10 @@ class main_window : public QMainWindow
     QPushButton *btn_playlist_ = nullptr;
     QPushButton *btn_sequential_playback_ = nullptr;
     QPushButton *btn_audio_only_ = nullptr;
-    QPushButton *btn_playlist_add_ = nullptr;
-    QPushButton *btn_playlist_play_ = nullptr;
+    QPushButton *btn_playlist_create_ = nullptr;
     QPushButton *btn_playlist_manage_ = nullptr;
-    QComboBox *playback_rate_combo_ = nullptr;
+    QPushButton *btn_playback_rate_ = nullptr;
+    QMenu *playback_rate_menu_ = nullptr;
 
     QFrame *video_frame_ = nullptr;
     QFrame *playlist_panel_ = nullptr;

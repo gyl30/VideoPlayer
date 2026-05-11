@@ -4,7 +4,9 @@
 #include <QFileInfo>
 #include <QFontMetrics>
 #include <QIcon>
+#include <QInputDialog>
 #include <QKeySequence>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QSignalBlocker>
 #include <QSettings>
@@ -111,34 +113,6 @@ QString format_playback_rate_text(double rate)
         text.chop(1);
     }
     return text + "x";
-}
-
-void sync_playback_rate_combo(QComboBox *combo, double playback_rate)
-{
-    if (combo == nullptr)
-    {
-        return;
-    }
-
-    QSignalBlocker blocker(combo);
-    const QIcon current_icon(":/icons/play.svg");
-    int current_index = -1;
-    for (int i = 0; i < combo->count(); ++i)
-    {
-        const double item_rate = combo->itemData(i).toDouble();
-        const bool current = std::abs(item_rate - playback_rate) < 0.0001;
-        combo->setItemText(i, format_playback_rate_text(item_rate));
-        combo->setItemIcon(i, current ? current_icon : QIcon());
-        if (current)
-        {
-            current_index = i;
-        }
-    }
-
-    if (current_index >= 0)
-    {
-        combo->setCurrentIndex(current_index);
-    }
 }
 }  // namespace
 
@@ -293,16 +267,11 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     lbl_playlist_count_ = new QLabel("0 个文件", this);
     lbl_playlist_count_->setObjectName("playlistCount");
     lbl_playlist_count_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    btn_playlist_play_ = new QPushButton(QIcon(":/icons/play.svg"), QString(), this);
-    btn_playlist_play_->setObjectName("playlistHeaderButton");
-    btn_playlist_play_->setCursor(Qt::PointingHandCursor);
-    btn_playlist_play_->setIconSize(QSize(13, 13));
-    btn_playlist_play_->setToolTip("播放所选文件");
-    btn_playlist_add_ = new QPushButton(QIcon(":/icons/playlist-add.svg"), QString(), this);
-    btn_playlist_add_->setObjectName("playlistHeaderButton");
-    btn_playlist_add_->setCursor(Qt::PointingHandCursor);
-    btn_playlist_add_->setIconSize(QSize(13, 13));
-    btn_playlist_add_->setToolTip("向播放列表添加文件");
+    btn_playlist_create_ = new QPushButton(QIcon(":/icons/playlist-add.svg"), QString(), this);
+    btn_playlist_create_->setObjectName("playlistHeaderButton");
+    btn_playlist_create_->setCursor(Qt::PointingHandCursor);
+    btn_playlist_create_->setIconSize(QSize(13, 13));
+    btn_playlist_create_->setToolTip("新建播放列表");
     btn_playlist_manage_ = new QPushButton(QIcon(":/icons/playlist-manage.svg"), QString(), this);
     btn_playlist_manage_->setObjectName("playlistHeaderButton");
     btn_playlist_manage_->setCursor(Qt::PointingHandCursor);
@@ -313,8 +282,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     playlist_header_layout->addStretch(1);
     playlist_header_layout->addWidget(lbl_playlist_count_);
     playlist_header_layout->addSpacing(4);
-    playlist_header_layout->addWidget(btn_playlist_play_);
-    playlist_header_layout->addWidget(btn_playlist_add_);
+    playlist_header_layout->addWidget(btn_playlist_create_);
     playlist_header_layout->addWidget(btn_playlist_manage_);
     playlist_layout->addLayout(playlist_header_layout);
 
@@ -454,17 +422,25 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_audio_only_->setChecked(false);
     btn_audio_only_->setToolTip("隐藏视频画面，仅播放音频");
 
-    playback_rate_combo_ = new QComboBox(this);
-    playback_rate_combo_->setObjectName("playbackRateCombo");
-    playback_rate_combo_->setCursor(Qt::PointingHandCursor);
-    playback_rate_combo_->setToolTip("播放速度");
-    playback_rate_combo_->setIconSize(QSize(14, 14));
-    playback_rate_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    btn_playback_rate_ = new QPushButton(this);
+    btn_playback_rate_->setObjectName("controlButtonWide");
+    btn_playback_rate_->setCursor(Qt::PointingHandCursor);
+    btn_playback_rate_->setToolTip("播放速度");
+    playback_rate_menu_ = new QMenu(this);
     for (double rate : {0.5, 0.75, 1.0, 1.25, 1.5, 2.0})
     {
-        playback_rate_combo_->addItem(format_playback_rate_text(rate), rate);
+        QAction *rate_action = playback_rate_menu_->addAction(format_playback_rate_text(rate));
+        rate_action->setCheckable(true);
+        rate_action->setData(rate);
+        connect(rate_action,
+                &QAction::triggered,
+                this,
+                [this, rate]()
+                {
+                    set_playback_rate(rate);
+                });
     }
-    sync_playback_rate_combo(playback_rate_combo_, playback_rate_);
+    update_playback_rate_button();
 
     control_row->addWidget(lbl_time_);
     control_row->addStretch(1);
@@ -475,7 +451,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     control_row->addWidget(btn_sequential_playback_);
     control_row->addWidget(btn_audio_only_);
     control_row->addStretch(1);
-    control_row->addWidget(playback_rate_combo_);
+    control_row->addWidget(btn_playback_rate_);
     control_row->addWidget(lbl_vol_icon_low_);
     control_row->addWidget(volume_meter_);
     control_row->addSpacing(12);
@@ -505,31 +481,14 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
             {
                 lbl_time_->setText(QString("%1 / %2").arg(format_time(static_cast<double>(value)), format_time(duration_)));
             });
-    connect(playback_rate_combo_,
-            &QComboBox::currentIndexChanged,
-            this,
-            [this](int index)
-            {
-                if (playback_rate_combo_ == nullptr || index < 0)
-                {
-                    return;
-                }
-                const QVariant rate_value = playback_rate_combo_->itemData(index);
-                if (rate_value.isValid())
-                {
-                    set_playback_rate(rate_value.toDouble());
-                }
-            });
-
     connect(btn_open_media_, &QPushButton::clicked, this, &main_window::on_open_file);
     connect(btn_video_fullscreen_, &QPushButton::clicked, this, &main_window::on_toggle_fullscreen);
     connect(btn_playlist_, &QPushButton::clicked, this, &main_window::on_toggle_playlist);
     connect(btn_audio_only_, &QPushButton::toggled, this, &main_window::on_audio_only_toggled);
-    connect(btn_playlist_add_, &QPushButton::clicked, this, &main_window::on_add_files_to_selected_playlist);
-    connect(btn_playlist_play_, &QPushButton::clicked, this, &main_window::on_play_selected_playlist_file);
+    connect(btn_playback_rate_, &QPushButton::clicked, this, &main_window::show_playback_rate_menu);
+    connect(btn_playlist_create_, &QPushButton::clicked, this, &main_window::on_create_playlist);
     connect(btn_playlist_manage_, &QPushButton::clicked, this, [this]() { open_playlist_management_dialog(); });
     connect(playlist_view_, &QTreeWidget::itemDoubleClicked, this, &main_window::on_playlist_item_activated);
-    connect(playlist_view_, &QTreeWidget::itemSelectionChanged, this, [this]() { update_playlist_header_buttons(); });
 
     connect(volume_meter_, &volume_meter::value_changed, this, &main_window::on_volume_changed);
     connect(btn_title_minimize_, &QPushButton::clicked, this, &QWidget::showMinimized);
@@ -879,43 +838,6 @@ void main_window::init_styles()
         "    background: #1e7dbd;"
         "    border-color: #83d7ff;"
         "    color: #ffffff;"
-        "}"
-        "QComboBox#playbackRateCombo {"
-        "    background: transparent;"
-        "    color: #f5fbff;"
-        "    border: none;"
-        "    border-radius: 2px;"
-        "    min-height: 46px;"
-        "    padding: 0 28px 0 10px;"
-        "}"
-        "QComboBox#playbackRateCombo:hover {"
-        "    background: rgba(255, 255, 255, 0.12);"
-        "    color: #ffffff;"
-        "}"
-        "QComboBox#playbackRateCombo:on {"
-        "    background: rgba(8, 29, 49, 0.9);"
-        "    color: #ffffff;"
-        "}"
-        "QComboBox#playbackRateCombo::drop-down {"
-        "    border: none;"
-        "    width: 22px;"
-        "}"
-        "QComboBox#playbackRateCombo::down-arrow {"
-        "    image: none;"
-        "    width: 0px;"
-        "    height: 0px;"
-        "}"
-        "QComboBox#playbackRateCombo QAbstractItemView {"
-        "    background: #0b1929;"
-        "    color: #d8e7f6;"
-        "    border: 1px solid #1e7dbd;"
-        "    selection-background-color: #0b1929;"
-        "    selection-color: #d8e7f6;"
-        "    outline: none;"
-        "}"
-        "QComboBox#playbackRateCombo QAbstractItemView::item {"
-        "    min-height: 28px;"
-        "    padding: 4px 10px;"
         "}"
         "QLabel#timeLabel {"
         "    color: #eefaff;"
@@ -1309,6 +1231,37 @@ void main_window::update_fullscreen_button()
     }
 }
 
+void main_window::update_playback_rate_button()
+{
+    if (btn_playback_rate_ != nullptr)
+    {
+        btn_playback_rate_->setText(format_playback_rate_text(playback_rate_));
+        btn_playback_rate_->setToolTip(QString("播放速度：%1").arg(format_playback_rate_text(playback_rate_)));
+    }
+
+    if (playback_rate_menu_ == nullptr)
+    {
+        return;
+    }
+
+    for (QAction *action : playback_rate_menu_->actions())
+    {
+        const double item_rate = action->data().toDouble();
+        action->setChecked(std::abs(item_rate - playback_rate_) < 0.0001);
+    }
+}
+
+void main_window::show_playback_rate_menu()
+{
+    if (btn_playback_rate_ == nullptr || playback_rate_menu_ == nullptr)
+    {
+        return;
+    }
+
+    update_playback_rate_button();
+    playback_rate_menu_->popup(btn_playback_rate_->mapToGlobal(QPoint(0, btn_playback_rate_->height())));
+}
+
 void main_window::set_playback_rate(double rate)
 {
     const double normalized_rate = std::clamp(rate, 0.5, 2.0);
@@ -1320,7 +1273,7 @@ void main_window::set_playback_rate(double rate)
     LOG_INFO("setting playback rate {} -> {}", playback_rate_, normalized_rate);
     playback_rate_ = normalized_rate;
 
-    sync_playback_rate_combo(playback_rate_combo_, playback_rate_);
+    update_playback_rate_button();
 
     if (audio_backend_ != nullptr)
     {
@@ -1478,57 +1431,6 @@ void main_window::set_active_playlist(const QString &playlist_id)
 }
 
 QString main_window::active_playlist_id() const { return playlist_store_.active_playlist_id(); }
-
-QString main_window::selected_playlist_target_id() const
-{
-    if (playlist_view_ != nullptr)
-    {
-        if (QTreeWidgetItem *item = playlist_view_->currentItem())
-        {
-            const QString playlist_id = playlist_id_for_item(item);
-            if (!playlist_id.isEmpty())
-            {
-                return playlist_id;
-            }
-        }
-
-        const QList<QTreeWidgetItem *> items = playlist_view_->selectedItems();
-        for (QTreeWidgetItem *item : items)
-        {
-            const QString playlist_id = playlist_id_for_item(item);
-            if (!playlist_id.isEmpty())
-            {
-                return playlist_id;
-            }
-        }
-    }
-
-    return active_playlist_id();
-}
-
-QTreeWidgetItem *main_window::selected_playlist_file_item() const
-{
-    if (playlist_view_ == nullptr)
-    {
-        return nullptr;
-    }
-
-    if (QTreeWidgetItem *item = playlist_view_->currentItem(); is_playlist_file_item(item))
-    {
-        return item;
-    }
-
-    const QList<QTreeWidgetItem *> items = playlist_view_->selectedItems();
-    for (QTreeWidgetItem *item : items)
-    {
-        if (is_playlist_file_item(item))
-        {
-            return item;
-        }
-    }
-
-    return nullptr;
-}
 
 void main_window::open_playlist_management_dialog()
 {
@@ -1900,20 +1802,22 @@ void main_window::open_files_into_playlist(const QString &playlist_id)
     }
 }
 
-void main_window::on_add_files_to_selected_playlist()
+void main_window::on_create_playlist()
 {
-    open_files_into_playlist(selected_playlist_target_id());
-}
-
-void main_window::on_play_selected_playlist_file()
-{
-    QTreeWidgetItem *item = selected_playlist_file_item();
-    if (item == nullptr)
+    bool accepted = false;
+    const QString name = QInputDialog::getText(this, "新建播放列表", "播放列表名称：", QLineEdit::Normal, "", &accepted);
+    if (!accepted)
     {
         return;
     }
 
-    play_playlist_item(playlist_id_for_item(item), playlist_row_for_item(item));
+    const QString playlist_id = playlist_store_.create_playlist(name);
+    if (playlist_id.isEmpty())
+    {
+        return;
+    }
+
+    set_active_playlist(playlist_id);
 }
 
 void main_window::on_toggle_pause()
@@ -1964,21 +1868,10 @@ void main_window::on_toggle_fullscreen()
 
 void main_window::update_playlist_header_buttons()
 {
-    const QString target_playlist_id = selected_playlist_target_id();
-    const playlist_entry *target_playlist = playlist_store_.playlist_by_id(target_playlist_id);
-    QTreeWidgetItem *selected_file_item = selected_playlist_file_item();
-
-    if (btn_playlist_add_ != nullptr)
+    if (btn_playlist_create_ != nullptr)
     {
-        btn_playlist_add_->setEnabled(target_playlist != nullptr);
-        btn_playlist_add_->setToolTip(target_playlist != nullptr ? QString("向“%1”添加文件").arg(target_playlist->name)
-                                                                 : "没有可用的播放列表");
-    }
-    if (btn_playlist_play_ != nullptr)
-    {
-        btn_playlist_play_->setEnabled(selected_file_item != nullptr);
-        btn_playlist_play_->setToolTip(selected_file_item != nullptr ? QString("播放“%1”").arg(selected_file_item->text(0))
-                                                                     : "请选择一个文件后播放");
+        btn_playlist_create_->setEnabled(true);
+        btn_playlist_create_->setToolTip("新建播放列表");
     }
     if (btn_playlist_manage_ != nullptr)
     {
