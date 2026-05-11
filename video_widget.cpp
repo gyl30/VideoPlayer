@@ -29,7 +29,7 @@ void video_widget::set_display_mode(display_mode mode)
     }
 
     display_mode_ = mode;
-    LOG_INFO("video widget display mode changed to {}", display_mode_ == display_mode::fill ? "fill" : "fit");
+    LOG_INFO("video widget display mode changed to {}", display_mode_ == display_mode::fit ? "fit" : "stretch");
     update();
 }
 
@@ -184,17 +184,6 @@ void video_widget::paintGL()
         else if (frame_aspect_ratio < widget_aspect_ratio)
         {
             x_scale = static_cast<GLfloat>(frame_aspect_ratio / widget_aspect_ratio);
-        }
-    }
-    else
-    {
-        if (frame_aspect_ratio > widget_aspect_ratio)
-        {
-            x_scale = static_cast<GLfloat>(frame_aspect_ratio / widget_aspect_ratio);
-        }
-        else if (frame_aspect_ratio < widget_aspect_ratio)
-        {
-            y_scale = static_cast<GLfloat>(widget_aspect_ratio / frame_aspect_ratio);
         }
     }
 

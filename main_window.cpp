@@ -19,6 +19,7 @@ namespace
 {
 constexpr const char *k_settings_org = "gyl30";
 constexpr const char *k_settings_app = "VideoPlayer";
+constexpr int k_resize_border_width = 8;
 
 QString normalize_media_path(const QString &path)
 {
@@ -341,7 +342,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
                 QAction *fullscreen_action = menu.addAction(is_video_fullscreen() ? "退出全屏" : "全屏");
                 QAction *tile_action = menu.addAction("平铺播放");
                 tile_action->setCheckable(true);
-                tile_action->setChecked(video_widget_->current_display_mode() == video_widget::display_mode::fill);
+                tile_action->setChecked(video_widget_->current_display_mode() == video_widget::display_mode::fit);
                 QAction *chosen = menu.exec(video_widget_->mapToGlobal(pos));
                 if (chosen == open_action)
                 {
@@ -353,7 +354,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
                 }
                 else if (chosen == tile_action)
                 {
-                    video_widget_->set_display_mode(tile_action->isChecked() ? video_widget::display_mode::fill : video_widget::display_mode::fit);
+                    video_widget_->set_display_mode(tile_action->isChecked() ? video_widget::display_mode::fit : video_widget::display_mode::stretch);
                 }
             });
 
@@ -375,6 +376,14 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     update_volume_icon(volume_meter_ != nullptr ? volume_meter_->value() : 80);
     update_playlist_buttons();
 
+    setMouseTracking(true);
+    installEventFilter(this);
+    for (auto *widget : findChildren<QWidget *>())
+    {
+        widget->setMouseTracking(true);
+        widget->installEventFilter(this);
+    }
+
     for (auto *button : findChildren<QAbstractButton *>())
     {
         if (!button->toolTip().isEmpty())
@@ -385,6 +394,112 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     }
 
     LOG_INFO("main window constructed");
+}
+
+Qt::Edges main_window::hit_test_resize_edges(const QPoint &global_pos) const
+{
+    if (isMaximized() || is_video_fullscreen())
+    {
+        return {};
+    }
+
+    const QRect frame = frameGeometry();
+    Qt::Edges edges;
+
+    if (global_pos.x() >= frame.left() && global_pos.x() <= frame.left() + k_resize_border_width)
+    {
+        edges |= Qt::LeftEdge;
+    }
+    else if (global_pos.x() <= frame.right() && global_pos.x() >= frame.right() - k_resize_border_width)
+    {
+        edges |= Qt::RightEdge;
+    }
+
+    if (global_pos.y() >= frame.top() && global_pos.y() <= frame.top() + k_resize_border_width)
+    {
+        edges |= Qt::TopEdge;
+    }
+    else if (global_pos.y() <= frame.bottom() && global_pos.y() >= frame.bottom() - k_resize_border_width)
+    {
+        edges |= Qt::BottomEdge;
+    }
+
+    return edges;
+}
+
+Qt::CursorShape main_window::cursor_shape_for_edges(Qt::Edges edges)
+{
+    if (edges == (Qt::TopEdge | Qt::LeftEdge) || edges == (Qt::BottomEdge | Qt::RightEdge))
+    {
+        return Qt::SizeFDiagCursor;
+    }
+    if (edges == (Qt::TopEdge | Qt::RightEdge) || edges == (Qt::BottomEdge | Qt::LeftEdge))
+    {
+        return Qt::SizeBDiagCursor;
+    }
+    if (edges == Qt::LeftEdge || edges == Qt::RightEdge)
+    {
+        return Qt::SizeHorCursor;
+    }
+    if (edges == Qt::TopEdge || edges == Qt::BottomEdge)
+    {
+        return Qt::SizeVerCursor;
+    }
+    return Qt::ArrowCursor;
+}
+
+bool main_window::handle_window_resize(QObject *watched, QEvent *event)
+{
+    auto *widget = qobject_cast<QWidget *>(watched);
+    if (widget == nullptr || widget == video_fullscreen_window_)
+    {
+        return false;
+    }
+
+    if (isMaximized() || is_video_fullscreen())
+    {
+        widget->unsetCursor();
+        return false;
+    }
+
+    if (event->type() == QEvent::MouseButtonPress)
+    {
+        auto *mouse_event = static_cast<QMouseEvent *>(event);
+        if (mouse_event->button() == Qt::LeftButton)
+        {
+            const Qt::Edges edges = hit_test_resize_edges(mouse_event->globalPosition().toPoint());
+            if (edges != Qt::Edges{} && windowHandle() != nullptr && windowHandle()->startSystemResize(edges))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    if (event->type() == QEvent::MouseMove)
+    {
+        auto *mouse_event = static_cast<QMouseEvent *>(event);
+        if (mouse_event->buttons() == Qt::NoButton)
+        {
+            const Qt::Edges edges = hit_test_resize_edges(mouse_event->globalPosition().toPoint());
+            if (edges == Qt::Edges{})
+            {
+                widget->unsetCursor();
+            }
+            else
+            {
+                widget->setCursor(cursor_shape_for_edges(edges));
+            }
+        }
+        return false;
+    }
+
+    if (event->type() == QEvent::Leave)
+    {
+        widget->unsetCursor();
+    }
+
+    return false;
 }
 
 void main_window::init_styles()
@@ -684,6 +799,11 @@ void main_window::closeEvent(QCloseEvent *event)
 
 bool main_window::eventFilter(QObject *watched, QEvent *event)
 {
+    if (handle_window_resize(watched, event))
+    {
+        return true;
+    }
+
     if (auto *button = qobject_cast<QAbstractButton *>(watched); button != nullptr)
     {
         if (event->type() == QEvent::Enter && !button->toolTip().isEmpty())

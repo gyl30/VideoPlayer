@@ -19,6 +19,7 @@
 #include <QKeyEvent>
 #include <QPoint>
 #include <QResizeEvent>
+#include <Qt>
 #include <QString>
 #include <thread>
 #include <memory>
@@ -85,6 +86,9 @@ class main_window : public QMainWindow
     bool is_video_fullscreen() const;
     void enter_video_fullscreen();
     void exit_video_fullscreen();
+    bool handle_window_resize(QObject *watched, QEvent *event);
+    Qt::Edges hit_test_resize_edges(const QPoint &global_pos) const;
+    static Qt::CursorShape cursor_shape_for_edges(Qt::Edges edges);
 
    private:
     video_widget *video_widget_ = nullptr;

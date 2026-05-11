@@ -24,7 +24,7 @@ class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
     enum class display_mode
     {
         fit,
-        fill
+        stretch
     };
 
     explicit video_widget(QWidget *parent = nullptr);
