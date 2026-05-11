@@ -115,6 +115,7 @@ add_executable(VideoPlayer
     av_clock.cpp
     video_widget.cpp
     video_scaler.cpp
+    playlist_store.cpp
     main_window.cpp 
     volumemeter.cpp
     audio_resampler.cpp
