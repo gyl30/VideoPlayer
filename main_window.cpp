@@ -293,10 +293,29 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     lbl_playlist_count_ = new QLabel("0 个文件", this);
     lbl_playlist_count_->setObjectName("playlistCount");
     lbl_playlist_count_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    btn_playlist_play_ = new QPushButton(QIcon(":/icons/play.svg"), QString(), this);
+    btn_playlist_play_->setObjectName("playlistHeaderButton");
+    btn_playlist_play_->setCursor(Qt::PointingHandCursor);
+    btn_playlist_play_->setIconSize(QSize(13, 13));
+    btn_playlist_play_->setToolTip("播放所选文件");
+    btn_playlist_add_ = new QPushButton(QIcon(":/icons/playlist-add.svg"), QString(), this);
+    btn_playlist_add_->setObjectName("playlistHeaderButton");
+    btn_playlist_add_->setCursor(Qt::PointingHandCursor);
+    btn_playlist_add_->setIconSize(QSize(13, 13));
+    btn_playlist_add_->setToolTip("向播放列表添加文件");
+    btn_playlist_manage_ = new QPushButton(QIcon(":/icons/playlist-manage.svg"), QString(), this);
+    btn_playlist_manage_->setObjectName("playlistHeaderButton");
+    btn_playlist_manage_->setCursor(Qt::PointingHandCursor);
+    btn_playlist_manage_->setIconSize(QSize(13, 13));
+    btn_playlist_manage_->setToolTip("管理播放列表");
 
     playlist_header_layout->addWidget(playlist_title);
     playlist_header_layout->addStretch(1);
     playlist_header_layout->addWidget(lbl_playlist_count_);
+    playlist_header_layout->addSpacing(4);
+    playlist_header_layout->addWidget(btn_playlist_play_);
+    playlist_header_layout->addWidget(btn_playlist_add_);
+    playlist_header_layout->addWidget(btn_playlist_manage_);
     playlist_layout->addLayout(playlist_header_layout);
 
     playlist_view_ = new QTreeWidget(this);
@@ -410,6 +429,16 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_playlist_->setCheckable(true);
     btn_playlist_->setChecked(false);
     btn_playlist_->setToolTip("显示/隐藏播放列表");
+    btn_open_media_ = new QPushButton(QIcon(":/icons/open-media.svg"), QString(), this);
+    btn_open_media_->setObjectName("toolBlockButton");
+    btn_open_media_->setCursor(Qt::PointingHandCursor);
+    btn_open_media_->setIconSize(QSize(18, 18));
+    btn_open_media_->setToolTip("打开媒体文件");
+    btn_video_fullscreen_ = new QPushButton(QIcon(":/icons/fullscreen-enter.svg"), QString(), this);
+    btn_video_fullscreen_->setObjectName("toolBlockButton");
+    btn_video_fullscreen_->setCursor(Qt::PointingHandCursor);
+    btn_video_fullscreen_->setIconSize(QSize(18, 18));
+    btn_video_fullscreen_->setToolTip("全屏");
 
     btn_sequential_playback_ = new QPushButton("顺播", this);
     btn_sequential_playback_->setObjectName("controlButtonWide");
@@ -451,6 +480,8 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     control_row->addWidget(lbl_vol_icon_low_);
     control_row->addWidget(volume_meter_);
     control_row->addSpacing(12);
+    control_row->addWidget(btn_open_media_);
+    control_row->addWidget(btn_video_fullscreen_);
     control_row->addWidget(btn_playlist_);
 
     control_layout->addWidget(control_bar, 1);
@@ -778,6 +809,21 @@ void main_window::init_styles()
         "    color: #eef4fa;"
         "    font-size: 14px;"
         "    font-weight: 600;"
+        "}"
+        "QPushButton#playlistHeaderButton {"
+        "    background: transparent;"
+        "    border: none;"
+        "    min-width: 28px;"
+        "    max-width: 28px;"
+        "    min-height: 28px;"
+        "    max-height: 28px;"
+        "    border-radius: 2px;"
+        "}"
+        "QPushButton#playlistHeaderButton:hover {"
+        "    background: rgba(255, 255, 255, 0.1);"
+        "}"
+        "QPushButton#playlistHeaderButton:pressed {"
+        "    background: rgba(0, 0, 0, 0.18);"
         "}"
         "QTreeWidget#playlistView {"
         "    background: transparent;"

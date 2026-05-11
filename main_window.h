@@ -121,9 +121,14 @@ class main_window : public QMainWindow
     QPushButton *btn_title_minimize_ = nullptr;
     QPushButton *btn_title_maximize_ = nullptr;
     QPushButton *btn_title_close_ = nullptr;
+    QPushButton *btn_open_media_ = nullptr;
+    QPushButton *btn_video_fullscreen_ = nullptr;
     QPushButton *btn_playlist_ = nullptr;
     QPushButton *btn_sequential_playback_ = nullptr;
     QPushButton *btn_audio_only_ = nullptr;
+    QPushButton *btn_playlist_add_ = nullptr;
+    QPushButton *btn_playlist_play_ = nullptr;
+    QPushButton *btn_playlist_manage_ = nullptr;
     QComboBox *playback_rate_combo_ = nullptr;
 
     QFrame *video_frame_ = nullptr;
