@@ -262,18 +262,17 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     playlist_header_layout->setContentsMargins(0, 0, 0, 0);
     playlist_header_layout->setSpacing(0);
 
-    lbl_playlist_count_ = new QLabel("0 个文件", this);
-    lbl_playlist_count_->setObjectName("playlistCount");
-    lbl_playlist_count_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     btn_playlist_create_ = new QPushButton(QIcon(":/icons/playlist-add.svg"), QString(), this);
     btn_playlist_create_->setObjectName("playlistHeaderButton");
     btn_playlist_create_->setCursor(Qt::PointingHandCursor);
     btn_playlist_create_->setIconSize(QSize(13, 13));
+    btn_playlist_create_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     btn_playlist_create_->setToolTip("新建播放列表");
     btn_playlist_manage_ = new QPushButton(QIcon(":/icons/playlist-manage.svg"), QString(), this);
     btn_playlist_manage_->setObjectName("playlistHeaderButton");
     btn_playlist_manage_->setCursor(Qt::PointingHandCursor);
     btn_playlist_manage_->setIconSize(QSize(13, 13));
+    btn_playlist_manage_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     btn_playlist_manage_->setToolTip("管理播放列表");
 
     auto *playlist_header_group = new QWidget(this);
@@ -281,11 +280,10 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     auto *playlist_header_group_layout = new QHBoxLayout(playlist_header_group);
     playlist_header_group_layout->setContentsMargins(4, 4, 4, 4);
     playlist_header_group_layout->setSpacing(2);
-    playlist_header_group_layout->addWidget(btn_playlist_create_);
-    playlist_header_group_layout->addWidget(btn_playlist_manage_);
+    playlist_header_group_layout->addWidget(btn_playlist_create_, 1);
+    playlist_header_group_layout->addWidget(btn_playlist_manage_, 1);
 
-    playlist_header_layout->addStretch(1);
-    playlist_header_layout->addWidget(playlist_header_group);
+    playlist_header_layout->addWidget(playlist_header_group, 1);
     playlist_layout->addLayout(playlist_header_layout);
 
     playlist_view_ = new QTreeWidget(this);
@@ -764,17 +762,14 @@ void main_window::init_styles()
         "    border-left: 1px solid #16385d;"
         "}"
         "QWidget#playlistHeaderGroup {"
-        "    background: rgba(255, 255, 255, 0.06);"
+        "    background: rgba(255, 255, 255, 0.04);"
         "    border-radius: 6px;"
         "}"
         "QPushButton#playlistHeaderButton {"
         "    background: transparent;"
         "    border: none;"
-        "    min-width: 28px;"
-        "    max-width: 28px;"
-        "    min-height: 28px;"
-        "    max-height: 28px;"
-        "    border-radius: 2px;"
+        "    min-height: 32px;"
+        "    border-radius: 4px;"
         "}"
         "QPushButton#playlistHeaderButton:hover {"
         "    background: rgba(255, 255, 255, 0.1);"
@@ -1376,7 +1371,7 @@ void main_window::update_volume_icon(int value)
 
 void main_window::refresh_playlist_view()
 {
-    if (playlist_view_ == nullptr || lbl_playlist_count_ == nullptr)
+    if (playlist_view_ == nullptr)
     {
         return;
     }
@@ -1385,10 +1380,6 @@ void main_window::refresh_playlist_view()
     playlist_view_->clear();
 
     const QString active_id = active_playlist_id();
-    const playlist_entry *active_entry = playlist_store_.active_playlist();
-    const int file_count = active_entry == nullptr ? 0 : static_cast<int>(active_entry->paths.size());
-    lbl_playlist_count_->setText(QString("%1 个文件").arg(file_count));
-
     const bool has_playing_item = playing_ && !current_playback_playlist_id_.isEmpty() && current_playback_row_ >= 0;
     const QIcon playing_icon(":/icons/play.svg");
     const QBrush playing_brush(QColor("#83d7ff"));

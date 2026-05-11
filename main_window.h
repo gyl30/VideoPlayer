@@ -137,8 +137,6 @@ class main_window : public QMainWindow
     QFrame *video_frame_ = nullptr;
     QFrame *playlist_panel_ = nullptr;
     QTreeWidget *playlist_view_ = nullptr;
-    QLabel *lbl_playlist_count_ = nullptr;
-
     QWidget *control_panel_ = nullptr;
 
     QPushButton *btn_backward_ = nullptr;
