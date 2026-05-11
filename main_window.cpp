@@ -4,6 +4,7 @@
 #include <QFileInfo>
 #include <QFontMetrics>
 #include <QIcon>
+#include <QInputDialog>
 #include <QKeySequence>
 #include <QMouseEvent>
 #include <QSignalBlocker>
@@ -269,10 +270,26 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     cmb_playlists_->setObjectName("playlistSelector");
     playlist_layout->addWidget(cmb_playlists_);
 
+    auto *playlist_action_layout = new QHBoxLayout();
+    playlist_action_layout->setContentsMargins(0, 0, 0, 0);
+    playlist_action_layout->setSpacing(8);
+
+    btn_playlist_create_ = new QPushButton("新建", this);
+    btn_playlist_create_->setObjectName("playlistActionButton");
+    btn_playlist_create_->setCursor(Qt::PointingHandCursor);
+
+    btn_playlist_actions_ = new QPushButton("更多", this);
+    btn_playlist_actions_->setObjectName("playlistActionButton");
+    btn_playlist_actions_->setCursor(Qt::PointingHandCursor);
+
+    playlist_action_layout->addWidget(btn_playlist_create_);
+    playlist_action_layout->addWidget(btn_playlist_actions_);
+    playlist_layout->addLayout(playlist_action_layout);
+
     playlist_view_ = new QListWidget(this);
     playlist_view_->setObjectName("playlistView");
     playlist_view_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    playlist_view_->setSelectionMode(QAbstractItemView::SingleSelection);
+    playlist_view_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     playlist_view_->addItem("打开文件后显示在这里");
     playlist_layout->addWidget(playlist_view_, 1);
     playlist_panel_->hide();
@@ -435,6 +452,8 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
             });
 
     connect(btn_playlist_, &QPushButton::clicked, this, &main_window::on_toggle_playlist);
+    connect(btn_playlist_create_, &QPushButton::clicked, this, &main_window::on_create_playlist);
+    connect(btn_playlist_actions_, &QPushButton::clicked, this, &main_window::show_playlist_actions_menu);
     connect(cmb_playlists_, &QComboBox::currentIndexChanged, this,
             [this](int index)
             {
@@ -757,6 +776,25 @@ void main_window::init_styles()
         "    color: #eef4fa;"
         "    selection-background-color: #174a68;"
         "    selection-color: #ffffff;"
+        "}"
+        "QPushButton#playlistActionButton {"
+        "    background: #11273c;"
+        "    border: 1px solid #1d4f77;"
+        "    border-radius: 4px;"
+        "    color: #eef4fa;"
+        "    min-height: 28px;"
+        "    padding: 0 10px;"
+        "}"
+        "QPushButton#playlistActionButton:hover {"
+        "    background: #15324d;"
+        "    border-color: #2d78ad;"
+        "}"
+        "QPushButton#playlistActionButton:pressed {"
+        "    background: #0d1d2f;"
+        "}"
+        "QPushButton#playlistActionButton:disabled {"
+        "    color: #7f91a2;"
+        "    border-color: #22374d;"
         "}"
         "QListWidget#playlistView {"
         "    background: transparent;"
@@ -1372,6 +1410,127 @@ void main_window::set_active_playlist(const QString &playlist_id)
 
 QString main_window::active_playlist_id() const { return playlist_store_.active_playlist_id(); }
 
+void main_window::on_create_playlist()
+{
+    bool accepted = false;
+    const QString name = QInputDialog::getText(this, "新建播放列表", "播放列表名称：", QLineEdit::Normal, "", &accepted);
+    if (!accepted)
+    {
+        return;
+    }
+
+    const QString playlist_id = playlist_store_.create_playlist(name);
+    set_active_playlist(playlist_id);
+}
+
+void main_window::show_playlist_actions_menu()
+{
+    if (btn_playlist_actions_ == nullptr)
+    {
+        return;
+    }
+
+    QMenu menu(this);
+    QAction *rename_action = menu.addAction("重命名播放列表");
+    QAction *delete_action = menu.addAction("删除播放列表");
+    menu.addSeparator();
+    QAction *remove_files_action = menu.addAction("移除选中文件");
+
+    const bool can_delete_playlist = playlist_store_.playlist_count() > 1;
+    const bool has_selection = playlist_view_ != nullptr && !playlist_view_->selectedItems().isEmpty();
+    delete_action->setEnabled(can_delete_playlist);
+    remove_files_action->setEnabled(has_selection);
+
+    QAction *chosen = menu.exec(btn_playlist_actions_->mapToGlobal(QPoint(0, btn_playlist_actions_->height())));
+    if (chosen == rename_action)
+    {
+        on_rename_playlist();
+    }
+    else if (chosen == delete_action)
+    {
+        on_delete_playlist();
+    }
+    else if (chosen == remove_files_action)
+    {
+        on_remove_selected_playlist_rows();
+    }
+}
+
+void main_window::on_rename_playlist()
+{
+    const playlist_entry *entry = playlist_store_.active_playlist();
+    if (entry == nullptr)
+    {
+        return;
+    }
+
+    bool accepted = false;
+    const QString name =
+        QInputDialog::getText(this, "重命名播放列表", "播放列表名称：", QLineEdit::Normal, entry->name, &accepted);
+    if (!accepted || !playlist_store_.rename_playlist(entry->id, name))
+    {
+        return;
+    }
+
+    refresh_playlist_selector();
+    save_playlist_state();
+}
+
+void main_window::on_delete_playlist()
+{
+    const playlist_entry *entry = playlist_store_.active_playlist();
+    if (entry == nullptr)
+    {
+        return;
+    }
+
+    if (playlist_store_.playlist_count() <= 1)
+    {
+        QMessageBox::information(this, "提示", "至少保留一个播放列表");
+        return;
+    }
+
+    const auto answer =
+        QMessageBox::question(this, "删除播放列表", QString("确定删除“%1”吗？").arg(entry->name), QMessageBox::Yes | QMessageBox::No);
+    if (answer != QMessageBox::Yes || !playlist_store_.remove_playlist(entry->id))
+    {
+        return;
+    }
+
+    refresh_playlist_selector();
+    refresh_playlist_view();
+    update_playlist_buttons();
+    save_playlist_state();
+}
+
+void main_window::on_remove_selected_playlist_rows()
+{
+    if (playlist_view_ == nullptr)
+    {
+        return;
+    }
+
+    QList<int> rows;
+    const QList<QListWidgetItem *> items = playlist_view_->selectedItems();
+    for (QListWidgetItem *item : items)
+    {
+        if (item == nullptr || item->data(Qt::UserRole).toString().isEmpty())
+        {
+            continue;
+        }
+        rows.append(playlist_view_->row(item));
+    }
+
+    if (rows.isEmpty() || !playlist_store_.remove_rows(active_playlist_id(), rows))
+    {
+        return;
+    }
+
+    refresh_playlist_view();
+    update_playlist_buttons();
+    save_playlist_state();
+}
+
 void main_window::restore_persistent_state()
 {
     QSettings settings(k_settings_org, k_settings_app);
@@ -1869,9 +2028,18 @@ void main_window::play_playlist_row(int row)
 
 void main_window::update_playlist_buttons()
 {
-    btn_backward_->setEnabled(true);
-    btn_forward_->setEnabled(true);
+    const playlist_entry *entry = playlist_store_.active_playlist();
+    const int file_count = entry == nullptr ? 0 : static_cast<int>(entry->paths.size());
+    const int row = playlist_view_ == nullptr ? -1 : playlist_view_->currentRow();
+    const bool has_current = row >= 0 && row < file_count;
+
+    btn_backward_->setEnabled(has_current && row > 0);
+    btn_forward_->setEnabled(has_current && row + 1 < file_count);
     btn_playlist_->setEnabled(true);
+    if (btn_playlist_actions_ != nullptr)
+    {
+        btn_playlist_actions_->setEnabled(entry != nullptr);
+    }
 }
 
 void main_window::finish_playback()
