@@ -1343,6 +1343,16 @@ void main_window::enter_video_fullscreen()
         video_fullscreen_layout_->setSpacing(0);
     }
 
+    fullscreen_restore_maximized_ = isMaximized();
+    if (fullscreen_restore_maximized_)
+    {
+        fullscreen_restore_geometry_ = normalGeometry();
+    }
+    else
+    {
+        fullscreen_restore_geometry_ = geometry();
+    }
+
     video_fullscreen_window_->setWindowTitle(this->windowTitle());
     video_fullscreen_window_->setWindowIcon(this->windowIcon());
     video_frame_layout_->removeWidget(video_widget_);
@@ -1371,7 +1381,19 @@ void main_window::exit_video_fullscreen()
     video_widget_->show();
 
     video_fullscreen_window_->hide();
-    this->show();
+    if (fullscreen_restore_maximized_)
+    {
+        showMaximized();
+    }
+    else
+    {
+        if (fullscreen_restore_geometry_.isValid())
+        {
+            setGeometry(fullscreen_restore_geometry_);
+        }
+        showNormal();
+    }
+    update_title_maximize_button();
     this->activateWindow();
     this->raise();
     this->setFocus();

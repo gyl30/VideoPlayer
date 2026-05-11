@@ -131,6 +131,8 @@ class main_window : public QMainWindow
     QPoint drag_start_global_pos_;
     QPoint drag_start_window_pos_;
     int drag_press_window_x_ = 0;
+    QRect fullscreen_restore_geometry_;
+    bool fullscreen_restore_maximized_ = false;
     QString current_media_path_;
     QString media_title_full_text_ = "视频播放器";
     int media_title_scroll_offset_ = 0;
