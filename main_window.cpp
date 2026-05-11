@@ -1324,6 +1324,9 @@ void main_window::refresh_playlist_view()
     const int file_count = active_entry == nullptr ? 0 : static_cast<int>(active_entry->paths.size());
     lbl_playlist_count_->setText(QString("%1 个文件").arg(file_count));
 
+    const bool has_playing_item = playing_ && !current_playback_playlist_id_.isEmpty() && current_playback_row_ >= 0;
+    const QIcon playing_icon(":/icons/play.svg");
+    const QBrush playing_brush(QColor("#83d7ff"));
     QTreeWidgetItem *current_item = nullptr;
     for (const playlist_entry &entry : playlist_store_.playlists())
     {
@@ -1343,13 +1346,22 @@ void main_window::refresh_playlist_view()
             file_item->setData(0, k_playlist_row_role, row);
             file_item->setToolTip(0, path);
 
-            if (entry.id == active_id && row == entry.current_row)
+            if (entry.id == current_playback_playlist_id_ && row == current_playback_row_)
+            {
+                QFont font = file_item->font(0);
+                font.setBold(true);
+                file_item->setFont(0, font);
+                file_item->setForeground(0, playing_brush);
+                file_item->setIcon(0, playing_icon);
+            }
+
+            if (!has_playing_item && entry.id == active_id && row == entry.current_row)
             {
                 current_item = file_item;
             }
         }
 
-        if (entry.id == active_id && current_item == nullptr)
+        if (!has_playing_item && entry.id == active_id && current_item == nullptr)
         {
             current_item = playlist_item;
         }
