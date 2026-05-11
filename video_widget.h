@@ -21,19 +21,11 @@ class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
     Q_OBJECT
 
    public:
-    enum class display_mode
-    {
-        fit,
-        stretch
-    };
-
     explicit video_widget(QWidget *parent = nullptr);
     ~video_widget() override;
 
    public:
     void clear();
-    void set_display_mode(display_mode mode);
-    [[nodiscard]] display_mode current_display_mode() const { return display_mode_; }
 
    public slots:
     void on_frame_ready(std::shared_ptr<media_frame> frame);
@@ -59,7 +51,6 @@ class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
     AVColorRange current_color_range_ = AVCOL_RANGE_UNSPECIFIED;
     QMatrix4x4 color_matrix_;
     int matrix_uniform_loc_ = -1;
-    display_mode display_mode_ = display_mode::fit;
 };
 
 #endif

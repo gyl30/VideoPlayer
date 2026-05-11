@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "log.h"
 #include "video_widget.h"
 
@@ -18,18 +19,6 @@ video_widget::~video_widget()
 void video_widget::clear()
 {
     current_frame_ = nullptr;
-    update();
-}
-
-void video_widget::set_display_mode(display_mode mode)
-{
-    if (display_mode_ == mode)
-    {
-        return;
-    }
-
-    display_mode_ = mode;
-    LOG_INFO("video widget display mode changed to {}", display_mode_ == display_mode::fit ? "fit" : "stretch");
     update();
 }
 
@@ -170,22 +159,18 @@ void video_widget::paintGL()
         pixel_aspect_ratio = static_cast<double>(raw->sample_aspect_ratio.num) / static_cast<double>(raw->sample_aspect_ratio.den);
     }
 
-    const double frame_aspect_ratio = (static_cast<double>(tex_width_) * pixel_aspect_ratio) / static_cast<double>(tex_height_);
-    const double widget_aspect_ratio = static_cast<double>(width()) / static_cast<double>(height());
+    const double widget_width = width() > 0 ? static_cast<double>(width()) : 1.0;
+    const double widget_height = height() > 0 ? static_cast<double>(height()) : 1.0;
+    const double frame_width = static_cast<double>(tex_width_) * pixel_aspect_ratio;
+    const double frame_height = static_cast<double>(tex_height_);
+    const double width_scale = widget_width / frame_width;
+    const double height_scale = widget_height / frame_height;
+    const double scale = std::min(1.0, std::min(width_scale, height_scale));
+    const double display_width = frame_width * scale;
+    const double display_height = frame_height * scale;
 
-    GLfloat x_scale = 1.0F;
-    GLfloat y_scale = 1.0F;
-    if (display_mode_ == display_mode::fit)
-    {
-        if (frame_aspect_ratio > widget_aspect_ratio)
-        {
-            y_scale = static_cast<GLfloat>(widget_aspect_ratio / frame_aspect_ratio);
-        }
-        else if (frame_aspect_ratio < widget_aspect_ratio)
-        {
-            x_scale = static_cast<GLfloat>(frame_aspect_ratio / widget_aspect_ratio);
-        }
-    }
+    const GLfloat x_scale = static_cast<GLfloat>(display_width / widget_width);
+    const GLfloat y_scale = static_cast<GLfloat>(display_height / widget_height);
 
     const GLfloat vertices[] = {-x_scale, -y_scale, x_scale, -y_scale, -x_scale, y_scale, x_scale, y_scale};
     static const GLfloat texCoords[] = {0.0F, 1.0F, 1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F};
