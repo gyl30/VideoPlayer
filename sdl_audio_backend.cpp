@@ -348,13 +348,9 @@ void sdl_audio_backend::process_audio()
                 continue;
             }
 
-            pcm_chunk chunk;
-            chunk.data.resize(static_cast<size_t>(buffer_size));
-            std::copy_n(filtered_frame->data[0], buffer_size, chunk.data.data());
-            chunk.offset = 0;
-            chunk.pts = frame_pts_seconds(filtered_frame, k_filter_time_base);
-            chunk.serial = frame->serial();
-            chunk.playback_rate = playback_rate;
+            const int total_frames = buffer_size / k_output_bytes_per_frame;
+            const double chunk_base_pts = frame_pts_seconds(filtered_frame, k_filter_time_base);
+            const uint8_t *chunk_src = filtered_frame->data[0];
             av_frame_free(&filtered_frame);
 
             const uint64_t pending_generation = config_generation_.load();
@@ -364,16 +360,43 @@ void sdl_audio_backend::process_audio()
                 break;
             }
 
-            std::unique_lock<std::mutex> pcm_lock(pcm_mutex_);
-            pcm_cond_.wait(pcm_lock, [this, &chunk]() { return stop_.load() || (queued_pcm_bytes_ + chunk.data.size()) <= k_max_pcm_queue_bytes; });
-            if (stop_.load())
+            int frames_offset = 0;
+            while (!stop_.load() && frames_offset < total_frames)
             {
-                break;
-            }
+                const int frames_this_chunk = std::min(k_output_chunk_frames, total_frames - frames_offset);
+                const size_t bytes_this_chunk = static_cast<size_t>(frames_this_chunk * k_output_bytes_per_frame);
 
-            queued_pcm_bytes_ += chunk.data.size();
-            pcm_queue_.push_back(std::move(chunk));
-            pcm_cond_.notify_all();
+                pcm_chunk chunk;
+                chunk.data.resize(bytes_this_chunk);
+                std::copy_n(chunk_src + static_cast<ptrdiff_t>(frames_offset * k_output_bytes_per_frame),
+                            static_cast<ptrdiff_t>(bytes_this_chunk),
+                            chunk.data.data());
+                chunk.offset = 0;
+                chunk.pts = chunk_base_pts + (static_cast<double>(frames_offset) / static_cast<double>(k_output_sample_rate));
+                chunk.serial = frame->serial();
+                chunk.playback_rate = playback_rate;
+
+                const uint64_t inner_pending_generation = config_generation_.load();
+                if (inner_pending_generation != active_generation)
+                {
+                    active_generation = inner_pending_generation;
+                    break;
+                }
+
+                std::unique_lock<std::mutex> pcm_lock(pcm_mutex_);
+                pcm_cond_.wait(
+                    pcm_lock, [this, &chunk]() { return stop_.load() || (queued_pcm_bytes_ + chunk.data.size()) <= k_max_pcm_queue_bytes; });
+                if (stop_.load())
+                {
+                    break;
+                }
+
+                queued_pcm_bytes_ += chunk.data.size();
+                pcm_queue_.push_back(std::move(chunk));
+                pcm_cond_.notify_all();
+
+                frames_offset += frames_this_chunk;
+            }
         }
     }
 

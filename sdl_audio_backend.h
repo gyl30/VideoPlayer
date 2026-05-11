@@ -63,6 +63,7 @@ class sdl_audio_backend
     static constexpr int k_output_sample_rate = 44100;
     static constexpr int k_output_channels = 2;
     static constexpr int k_output_bytes_per_frame = 4;
+    static constexpr int k_output_chunk_frames = 512;
     static constexpr size_t k_max_pcm_queue_bytes = static_cast<size_t>(k_output_sample_rate * k_output_bytes_per_frame * 2);
     static constexpr AVRational k_filter_time_base = {1, AV_TIME_BASE};
 
