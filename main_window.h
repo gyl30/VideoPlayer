@@ -13,7 +13,7 @@
 #include <QSlider>
 #include <QLabel>
 #include <QFrame>
-#include <QTabBar>
+#include <QComboBox>
 #include <QTreeWidget>
 #include <QTimer>
 #include <QEvent>
@@ -124,7 +124,7 @@ class main_window : public QMainWindow
     QPushButton *btn_playlist_ = nullptr;
     QPushButton *btn_sequential_playback_ = nullptr;
     QPushButton *btn_audio_only_ = nullptr;
-    QTabBar *playback_rate_tabs_ = nullptr;
+    QComboBox *playback_rate_combo_ = nullptr;
 
     QFrame *video_frame_ = nullptr;
     QFrame *playlist_panel_ = nullptr;

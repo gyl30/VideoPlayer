@@ -397,23 +397,18 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_audio_only_->setChecked(false);
     btn_audio_only_->setToolTip("隐藏视频画面，仅播放音频");
 
-    playback_rate_tabs_ = new QTabBar(this);
-    playback_rate_tabs_->setObjectName("playbackRateTabs");
-    playback_rate_tabs_->setCursor(Qt::PointingHandCursor);
-    playback_rate_tabs_->setDrawBase(false);
-    playback_rate_tabs_->setExpanding(false);
-    playback_rate_tabs_->setMovable(false);
-    playback_rate_tabs_->setUsesScrollButtons(false);
-    playback_rate_tabs_->setElideMode(Qt::ElideNone);
-    playback_rate_tabs_->setDocumentMode(true);
-    playback_rate_tabs_->setToolTip("播放速度");
+    playback_rate_combo_ = new QComboBox(this);
+    playback_rate_combo_->setObjectName("playbackRateCombo");
+    playback_rate_combo_->setCursor(Qt::PointingHandCursor);
+    playback_rate_combo_->setToolTip("播放速度");
+    playback_rate_combo_->setMinimumWidth(88);
     for (double rate : {0.5, 0.75, 1.0, 1.25, 1.5, 2.0})
     {
-        const int index = playback_rate_tabs_->addTab(format_playback_rate_text(rate));
-        playback_rate_tabs_->setTabData(index, rate);
+        playback_rate_combo_->addItem(format_playback_rate_text(rate), rate);
+        const int index = playback_rate_combo_->count() - 1;
         if (std::abs(playback_rate_ - rate) < 0.0001)
         {
-            playback_rate_tabs_->setCurrentIndex(index);
+            playback_rate_combo_->setCurrentIndex(index);
         }
     }
 
@@ -426,7 +421,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     control_row->addWidget(btn_sequential_playback_);
     control_row->addWidget(btn_audio_only_);
     control_row->addStretch(1);
-    control_row->addWidget(playback_rate_tabs_);
+    control_row->addWidget(playback_rate_combo_);
     control_row->addWidget(lbl_vol_icon_low_);
     control_row->addWidget(volume_meter_);
     control_row->addSpacing(12);
@@ -454,16 +449,16 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
             {
                 lbl_time_->setText(QString("%1 / %2").arg(format_time(static_cast<double>(value)), format_time(duration_)));
             });
-    connect(playback_rate_tabs_,
-            &QTabBar::currentChanged,
+    connect(playback_rate_combo_,
+            &QComboBox::currentIndexChanged,
             this,
             [this](int index)
             {
-                if (playback_rate_tabs_ == nullptr || index < 0)
+                if (playback_rate_combo_ == nullptr || index < 0)
                 {
                     return;
                 }
-                const QVariant rate_value = playback_rate_tabs_->tabData(index);
+                const QVariant rate_value = playback_rate_combo_->itemData(index);
                 if (rate_value.isValid())
                 {
                     set_playback_rate(rate_value.toDouble());
@@ -834,23 +829,38 @@ void main_window::init_styles()
         "    border-color: #83d7ff;"
         "    color: #ffffff;"
         "}"
-        "QTabBar#playbackRateTabs::tab {"
-        "    background: transparent;"
-        "    color: #d8e7f6;"
-        "    border: none;"
-        "    min-height: 34px;"
-        "    padding: 0 10px;"
-        "    margin: 0 1px;"
-        "    font-size: 13px;"
+        "QComboBox#playbackRateCombo {"
+        "    background: rgba(255, 255, 255, 0.1);"
+        "    color: #ffffff;"
+        "    border: 1px solid rgba(131, 215, 255, 0.28);"
         "    border-radius: 2px;"
+        "    min-height: 34px;"
+        "    padding: 0 28px 0 10px;"
         "}"
-        "QTabBar#playbackRateTabs::tab:hover {"
-        "    background: rgba(255, 255, 255, 0.12);"
-        "    color: #ffffff;"
+        "QComboBox#playbackRateCombo:hover {"
+        "    background: rgba(255, 255, 255, 0.16);"
+        "    border-color: rgba(131, 215, 255, 0.5);"
         "}"
-        "QTabBar#playbackRateTabs::tab:selected {"
-        "    background: #1e7dbd;"
-        "    color: #ffffff;"
+        "QComboBox#playbackRateCombo::drop-down {"
+        "    border: none;"
+        "    width: 22px;"
+        "}"
+        "QComboBox#playbackRateCombo::down-arrow {"
+        "    image: none;"
+        "    width: 0px;"
+        "    height: 0px;"
+        "}"
+        "QComboBox#playbackRateCombo QAbstractItemView {"
+        "    background: #0b1929;"
+        "    color: #d8e7f6;"
+        "    border: 1px solid #1e7dbd;"
+        "    selection-background-color: #1e7dbd;"
+        "    selection-color: #ffffff;"
+        "    outline: none;"
+        "}"
+        "QComboBox#playbackRateCombo QAbstractItemView::item {"
+        "    min-height: 28px;"
+        "    padding: 4px 10px;"
         "}"
         "QLabel#timeLabel {"
         "    color: #eefaff;"
@@ -1219,14 +1229,14 @@ void main_window::set_playback_rate(double rate)
     LOG_INFO("setting playback rate {} -> {}", playback_rate_, normalized_rate);
     playback_rate_ = normalized_rate;
 
-    if (playback_rate_tabs_ != nullptr)
+    if (playback_rate_combo_ != nullptr)
     {
-        for (int i = 0; i < playback_rate_tabs_->count(); ++i)
+        for (int i = 0; i < playback_rate_combo_->count(); ++i)
         {
-            if (std::abs(playback_rate_tabs_->tabData(i).toDouble() - playback_rate_) < 0.0001)
+            if (std::abs(playback_rate_combo_->itemData(i).toDouble() - playback_rate_) < 0.0001)
             {
-                QSignalBlocker blocker(playback_rate_tabs_);
-                playback_rate_tabs_->setCurrentIndex(i);
+                QSignalBlocker blocker(playback_rate_combo_);
+                playback_rate_combo_->setCurrentIndex(i);
                 break;
             }
         }
