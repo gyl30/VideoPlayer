@@ -112,6 +112,35 @@ QString format_playback_rate_text(double rate)
     }
     return text + "x";
 }
+
+void sync_playback_rate_combo(QComboBox *combo, double playback_rate)
+{
+    if (combo == nullptr)
+    {
+        return;
+    }
+
+    QSignalBlocker blocker(combo);
+    const QIcon current_icon(":/icons/play.svg");
+    int current_index = -1;
+    for (int i = 0; i < combo->count(); ++i)
+    {
+        const double item_rate = combo->itemData(i).toDouble();
+        const bool current = std::abs(item_rate - playback_rate) < 0.0001;
+        combo->setItemText(i, current ? QString("%1  当前").arg(format_playback_rate_text(item_rate))
+                                      : format_playback_rate_text(item_rate));
+        combo->setItemIcon(i, current ? current_icon : QIcon());
+        if (current)
+        {
+            current_index = i;
+        }
+    }
+
+    if (current_index >= 0)
+    {
+        combo->setCurrentIndex(current_index);
+    }
+}
 }  // namespace
 
 QString format_time(double seconds)
@@ -405,12 +434,8 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     for (double rate : {0.5, 0.75, 1.0, 1.25, 1.5, 2.0})
     {
         playback_rate_combo_->addItem(format_playback_rate_text(rate), rate);
-        const int index = playback_rate_combo_->count() - 1;
-        if (std::abs(playback_rate_ - rate) < 0.0001)
-        {
-            playback_rate_combo_->setCurrentIndex(index);
-        }
     }
+    sync_playback_rate_combo(playback_rate_combo_, playback_rate_);
 
     control_row->addWidget(lbl_time_);
     control_row->addStretch(1);
@@ -854,8 +879,8 @@ void main_window::init_styles()
         "    background: #0b1929;"
         "    color: #d8e7f6;"
         "    border: 1px solid #1e7dbd;"
-        "    selection-background-color: #1e7dbd;"
-        "    selection-color: #ffffff;"
+        "    selection-background-color: #0b1929;"
+        "    selection-color: #d8e7f6;"
         "    outline: none;"
         "}"
         "QComboBox#playbackRateCombo QAbstractItemView::item {"
@@ -1229,18 +1254,7 @@ void main_window::set_playback_rate(double rate)
     LOG_INFO("setting playback rate {} -> {}", playback_rate_, normalized_rate);
     playback_rate_ = normalized_rate;
 
-    if (playback_rate_combo_ != nullptr)
-    {
-        for (int i = 0; i < playback_rate_combo_->count(); ++i)
-        {
-            if (std::abs(playback_rate_combo_->itemData(i).toDouble() - playback_rate_) < 0.0001)
-            {
-                QSignalBlocker blocker(playback_rate_combo_);
-                playback_rate_combo_->setCurrentIndex(i);
-                break;
-            }
-        }
-    }
+    sync_playback_rate_combo(playback_rate_combo_, playback_rate_);
 
     if (audio_backend_ != nullptr)
     {
