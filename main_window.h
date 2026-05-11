@@ -64,6 +64,8 @@ class main_window : public QMainWindow
     void on_play_previous();
     void on_play_next();
     void on_playlist_item_activated(QTreeWidgetItem *item, int column);
+    void on_audio_only_toggled(bool checked);
+    void on_video_frame_ready(std::shared_ptr<media_frame> frame);
 
    private:
     void stop_play();
@@ -122,6 +124,7 @@ class main_window : public QMainWindow
     QPushButton *btn_playlist_ = nullptr;
     QPushButton *btn_playback_rate_ = nullptr;
     QPushButton *btn_sequential_playback_ = nullptr;
+    QPushButton *btn_audio_only_ = nullptr;
 
     QFrame *video_frame_ = nullptr;
     QFrame *playlist_panel_ = nullptr;
@@ -159,6 +162,7 @@ class main_window : public QMainWindow
     int last_saved_progress_second_ = -1;
     int current_playback_row_ = -1;
     double playback_rate_ = 1.0;
+    bool audio_only_mode_ = false;
     playlist_store playlist_store_;
 
     bool playing_ = false;

@@ -395,6 +395,13 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_sequential_playback_->setChecked(false);
     btn_sequential_playback_->setToolTip("播放结束后自动播放下一项");
 
+    btn_audio_only_ = new QPushButton("仅音频", this);
+    btn_audio_only_->setObjectName("controlButtonWide");
+    btn_audio_only_->setCursor(Qt::PointingHandCursor);
+    btn_audio_only_->setCheckable(true);
+    btn_audio_only_->setChecked(false);
+    btn_audio_only_->setToolTip("隐藏视频画面，仅播放音频");
+
     control_row->addWidget(lbl_time_);
     control_row->addStretch(1);
     control_row->addWidget(btn_stop_);
@@ -402,6 +409,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     control_row->addWidget(btn_play_pause_);
     control_row->addWidget(btn_forward_);
     control_row->addWidget(btn_sequential_playback_);
+    control_row->addWidget(btn_audio_only_);
     control_row->addStretch(1);
     control_row->addWidget(btn_playback_rate_);
     control_row->addWidget(lbl_vol_icon_low_);
@@ -440,6 +448,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
             });
 
     connect(btn_playlist_, &QPushButton::clicked, this, &main_window::on_toggle_playlist);
+    connect(btn_audio_only_, &QPushButton::toggled, this, &main_window::on_audio_only_toggled);
     connect(playlist_view_, &QTreeWidget::itemDoubleClicked, this, &main_window::on_playlist_item_activated);
     connect(playlist_view_, &QTreeWidget::customContextMenuRequested, this, &main_window::show_playlist_context_menu);
     connect(video_widget_, &QWidget::customContextMenuRequested, this,
@@ -1850,6 +1859,25 @@ void main_window::on_playlist_item_activated(QTreeWidgetItem *item, int)
     }
 }
 
+void main_window::on_audio_only_toggled(bool checked)
+{
+    audio_only_mode_ = checked;
+    if (audio_only_mode_ && video_widget_ != nullptr)
+    {
+        video_widget_->clear();
+    }
+}
+
+void main_window::on_video_frame_ready(std::shared_ptr<media_frame> frame)
+{
+    if (!playing_ || audio_only_mode_ || video_widget_ == nullptr)
+    {
+        return;
+    }
+
+    video_widget_->on_frame_ready(std::move(frame));
+}
+
 void main_window::on_volume_changed(int value)
 {
     update_volume_icon(value);
@@ -2093,7 +2121,7 @@ void main_window::stop_play()
     LOG_INFO("stopping sync thread");
     if (sync_thread_ != nullptr)
     {
-        disconnect(sync_thread_.get(), nullptr, video_widget_, nullptr);
+        disconnect(sync_thread_.get(), nullptr, this, nullptr);
         sync_thread_->stop();
         sync_thread_->wait();
         sync_thread_.reset();
@@ -2223,7 +2251,7 @@ bool main_window::start_play(const std::string &filepath)
         sync_thread_ = std::make_unique<video_sync_thread>(
             video_frame_queue_.get(), video_pkt_queue_.get(), demuxer_->time_base(demuxer_->video_index()), clock_.get());
 
-        connect(sync_thread_.get(), &video_sync_thread::frame_ready, video_widget_, &video_widget::on_frame_ready);
+        connect(sync_thread_.get(), &video_sync_thread::frame_ready, this, &main_window::on_video_frame_ready);
 
         sync_thread_->start();
     }
