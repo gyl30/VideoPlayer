@@ -77,6 +77,8 @@ class main_window : public QMainWindow
     void update_media_title_text();
     void on_title_scroll_tick();
     void update_volume_icon(int value);
+    void set_playback_rate(double rate);
+    void show_playback_rate_menu(const QPoint &global_pos);
     void restore_persistent_state();
     void save_persistent_state();
     void save_playlist_state();
@@ -103,6 +105,7 @@ class main_window : public QMainWindow
     QPushButton *btn_title_maximize_ = nullptr;
     QPushButton *btn_title_close_ = nullptr;
     QPushButton *btn_playlist_ = nullptr;
+    QPushButton *btn_playback_rate_ = nullptr;
 
     QFrame *video_frame_ = nullptr;
     QFrame *playlist_panel_ = nullptr;
@@ -137,6 +140,7 @@ class main_window : public QMainWindow
     QString media_title_full_text_ = "视频播放器";
     int media_title_scroll_offset_ = 0;
     int last_saved_progress_second_ = -1;
+    double playback_rate_ = 1.0;
 
     bool playing_ = false;
     bool paused_ = false;

@@ -13,6 +13,7 @@
 #include <QToolTip>
 #include <QUrl>
 #include <QWindow>
+#include <cmath>
 #include "log.h"
 #include "main_window.h"
 #include "volumemeter.h"
@@ -89,6 +90,20 @@ QString normalize_media_path(const QString &path)
 QString playback_position_key(const QString &path)
 {
     return QStringLiteral("playback/positions/%1").arg(QString::fromLatin1(QUrl::toPercentEncoding(normalize_media_path(path))));
+}
+
+QString format_playback_rate_text(double rate)
+{
+    QString text = QString::number(rate, 'f', 2);
+    while (text.contains('.') && text.endsWith('0'))
+    {
+        text.chop(1);
+    }
+    if (text.endsWith('.'))
+    {
+        text.chop(1);
+    }
+    return text + "x";
 }
 }  // namespace
 
@@ -358,6 +373,11 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_playlist_->setChecked(false);
     btn_playlist_->setToolTip("显示/隐藏播放列表");
 
+    btn_playback_rate_ = new QPushButton(format_playback_rate_text(playback_rate_), this);
+    btn_playback_rate_->setObjectName("controlButtonWide");
+    btn_playback_rate_->setCursor(Qt::PointingHandCursor);
+    btn_playback_rate_->setToolTip("播放速度");
+
     control_row->addWidget(lbl_time_);
     control_row->addStretch(1);
     control_row->addWidget(btn_stop_);
@@ -365,6 +385,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     control_row->addWidget(btn_play_pause_);
     control_row->addWidget(btn_forward_);
     control_row->addStretch(1);
+    control_row->addWidget(btn_playback_rate_);
     control_row->addWidget(lbl_vol_icon_low_);
     control_row->addWidget(volume_meter_);
     control_row->addSpacing(12);
@@ -392,6 +413,13 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
             {
                 lbl_time_->setText(QString("%1 / %2").arg(format_time(static_cast<double>(value)), format_time(duration_)));
             });
+    connect(btn_playback_rate_,
+            &QPushButton::clicked,
+            this,
+            [this]()
+            {
+                show_playback_rate_menu(btn_playback_rate_->mapToGlobal(QPoint(0, btn_playback_rate_->height())));
+            });
 
     connect(btn_playlist_, &QPushButton::clicked, this, &main_window::on_toggle_playlist);
     connect(playlist_view_, &QListWidget::itemDoubleClicked, this, &main_window::on_playlist_item_activated);
@@ -407,6 +435,20 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
                 QMenu menu(this);
                 QAction *open_action = menu.addAction("打开");
                 QAction *fullscreen_action = menu.addAction(is_video_fullscreen() ? "退出全屏" : "全屏");
+                QMenu *playback_rate_menu = menu.addMenu("播放速度");
+                for (double rate : {0.5, 0.75, 1.0, 1.25, 1.5, 2.0})
+                {
+                    QAction *rate_action = playback_rate_menu->addAction(format_playback_rate_text(rate));
+                    rate_action->setCheckable(true);
+                    rate_action->setChecked(std::abs(playback_rate_ - rate) < 0.0001);
+                    connect(rate_action,
+                            &QAction::triggered,
+                            this,
+                            [this, rate]()
+                            {
+                                set_playback_rate(rate);
+                            });
+                }
                 QAction *chosen = menu.exec(video_widget_->mapToGlobal(pos));
                 if (chosen == open_action)
                 {
@@ -1100,6 +1142,53 @@ void main_window::update_title_maximize_button()
 
     btn_title_maximize_->setIcon(QIcon(isMaximized() ? ":/icons/title-restore.svg" : ":/icons/title-maximize.svg"));
     btn_title_maximize_->setToolTip(isMaximized() ? "还原" : "最大化");
+}
+
+void main_window::set_playback_rate(double rate)
+{
+    const double normalized_rate = std::clamp(rate, 0.5, 2.0);
+    if (std::abs(playback_rate_ - normalized_rate) < 0.0001)
+    {
+        return;
+    }
+
+    LOG_INFO("setting playback rate {} -> {}", playback_rate_, normalized_rate);
+    playback_rate_ = normalized_rate;
+
+    if (btn_playback_rate_ != nullptr)
+    {
+        btn_playback_rate_->setText(format_playback_rate_text(playback_rate_));
+    }
+
+    if (clock_ != nullptr)
+    {
+        clock_->set_rate(playback_rate_);
+    }
+    if (audio_backend_ != nullptr)
+    {
+        audio_backend_->set_playback_rate(playback_rate_);
+    }
+}
+
+void main_window::show_playback_rate_menu(const QPoint &global_pos)
+{
+    QMenu menu(this);
+
+    for (double rate : {0.5, 0.75, 1.0, 1.25, 1.5, 2.0})
+    {
+        QAction *rate_action = menu.addAction(format_playback_rate_text(rate));
+        rate_action->setCheckable(true);
+        rate_action->setChecked(std::abs(playback_rate_ - rate) < 0.0001);
+        connect(rate_action,
+                &QAction::triggered,
+                this,
+                [this, rate]()
+                {
+                    set_playback_rate(rate);
+                });
+    }
+
+    menu.exec(global_pos);
 }
 
 void main_window::set_media_title_text(const QString &text)
@@ -1802,6 +1891,7 @@ bool main_window::start_play(const std::string &filepath)
     audio_frame_queue_ = std::make_unique<safe_queue<std::shared_ptr<media_frame>>>(64);
 
     clock_ = std::make_unique<av_clock>();
+    clock_->set_rate(playback_rate_);
 
     demuxer_ = std::make_unique<demuxer>();
     if (!demuxer_->open(filepath, video_pkt_queue_.get(), audio_pkt_queue_.get()))
@@ -1864,6 +1954,7 @@ bool main_window::start_play(const std::string &filepath)
             LOG_ERROR("failed to init audio backend");
             return false;
         }
+        audio_backend_->set_playback_rate(playback_rate_);
         audio_backend_->set_volume(volume_meter_ != nullptr ? volume_meter_->value() : 80);
     }
 
