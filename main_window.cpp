@@ -429,7 +429,9 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     playback_rate_combo_->setObjectName("playbackRateCombo");
     playback_rate_combo_->setCursor(Qt::PointingHandCursor);
     playback_rate_combo_->setToolTip("播放速度");
-    playback_rate_combo_->setMinimumWidth(88);
+    playback_rate_combo_->setIconSize(QSize(14, 14));
+    playback_rate_combo_->setMinimumContentsLength(7);
+    playback_rate_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     for (double rate : {0.5, 0.75, 1.0, 1.25, 1.5, 2.0})
     {
         playback_rate_combo_->addItem(format_playback_rate_text(rate), rate);
