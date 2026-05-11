@@ -280,8 +280,6 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 
     playlist_header_layout->addWidget(playlist_title);
     playlist_header_layout->addStretch(1);
-    playlist_header_layout->addWidget(lbl_playlist_count_);
-    playlist_header_layout->addSpacing(4);
     playlist_header_layout->addWidget(btn_playlist_create_);
     playlist_header_layout->addWidget(btn_playlist_manage_);
     playlist_layout->addLayout(playlist_header_layout);
@@ -427,6 +425,27 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_playback_rate_->setCursor(Qt::PointingHandCursor);
     btn_playback_rate_->setToolTip("播放速度");
     playback_rate_menu_ = new QMenu(this);
+    playback_rate_menu_->setStyleSheet(
+        "QMenu {"
+        "    background: #0b1929;"
+        "    color: #d8e7f6;"
+        "    border: 1px solid #1e7dbd;"
+        "    padding: 6px;"
+        "}"
+        "QMenu::item {"
+        "    padding: 7px 16px;"
+        "    margin: 2px 4px;"
+        "    border-radius: 4px;"
+        "}"
+        "QMenu::item:selected, QMenu::item:checked {"
+        "    background: #174a68;"
+        "    color: #ffffff;"
+        "}"
+        "QMenu::indicator {"
+        "    width: 0px;"
+        "    height: 0px;"
+        "}"
+    );
     for (double rate : {0.5, 0.75, 1.0, 1.25, 1.5, 2.0})
     {
         QAction *rate_action = playback_rate_menu_->addAction(format_playback_rate_text(rate));
@@ -1804,13 +1823,55 @@ void main_window::open_files_into_playlist(const QString &playlist_id)
 
 void main_window::on_create_playlist()
 {
-    bool accepted = false;
-    const QString name = QInputDialog::getText(this, "新建播放列表", "播放列表名称：", QLineEdit::Normal, "", &accepted);
-    if (!accepted)
+    QInputDialog dialog(this);
+    dialog.setInputMode(QInputDialog::TextInput);
+    dialog.setWindowTitle("新建播放列表");
+    dialog.setLabelText("播放列表名称");
+    dialog.setTextValue("");
+    dialog.setOkButtonText("创建");
+    dialog.setCancelButtonText("取消");
+    dialog.resize(420, dialog.sizeHint().height());
+    dialog.setStyleSheet(
+        "QInputDialog {"
+        "    background: #071b30;"
+        "    color: #d8e0ea;"
+        "}"
+        "QLabel {"
+        "    color: #eef4fa;"
+        "    font-size: 14px;"
+        "}"
+        "QLineEdit {"
+        "    background: #0b1929;"
+        "    color: #f5fbff;"
+        "    border: 1px solid #1e7dbd;"
+        "    border-radius: 4px;"
+        "    padding: 8px 10px;"
+        "    min-height: 20px;"
+        "}"
+        "QPushButton {"
+        "    background: transparent;"
+        "    color: #f5fbff;"
+        "    border: none;"
+        "    border-radius: 2px;"
+        "    min-width: 64px;"
+        "    min-height: 36px;"
+        "    padding: 0 12px;"
+        "}"
+        "QPushButton:hover {"
+        "    background: rgba(255, 255, 255, 0.12);"
+        "    color: #ffffff;"
+        "}"
+        "QPushButton:pressed {"
+        "    background: rgba(8, 29, 49, 0.9);"
+        "}"
+    );
+
+    if (dialog.exec() != QDialog::Accepted)
     {
         return;
     }
 
+    const QString name = dialog.textValue();
     const QString playlist_id = playlist_store_.create_playlist(name);
     if (playlist_id.isEmpty())
     {
