@@ -7,12 +7,44 @@ video_widget::video_widget(QWidget *parent) : QOpenGLWidget(parent) { LOG_INFO("
 video_widget::~video_widget()
 {
     LOG_INFO("video widget destroying");
+    cleanup_gl_resources();
+}
+
+void video_widget::cleanup_gl_resources()
+{
+    if (context() == nullptr)
+    {
+        if (program_ != nullptr)
+        {
+            delete program_;
+            program_ = nullptr;
+        }
+        program_ = nullptr;
+        texture_inited_ = false;
+        tex_width_ = 0;
+        tex_height_ = 0;
+        return;
+    }
+
     makeCurrent();
-    delete program_;
+
+    if (program_ != nullptr)
+    {
+        delete program_;
+        program_ = nullptr;
+    }
+
     if (texture_inited_)
     {
         glDeleteTextures(3, textures_);
+        textures_[0] = 0;
+        textures_[1] = 0;
+        textures_[2] = 0;
+        texture_inited_ = false;
     }
+
+    tex_width_ = 0;
+    tex_height_ = 0;
     doneCurrent();
 }
 
@@ -43,6 +75,17 @@ void video_widget::initializeGL()
 {
     LOG_INFO("video widget initialize gl");
     initializeOpenGLFunctions();
+
+    if (context() != nullptr)
+    {
+        connect(context(), &QOpenGLContext::aboutToBeDestroyed, this, &video_widget::cleanup_gl_resources, Qt::UniqueConnection);
+    }
+
+    if (program_ != nullptr || texture_inited_)
+    {
+        cleanup_gl_resources();
+        makeCurrent();
+    }
 
     program_ = new QOpenGLShaderProgram(this);
     program_->addShaderFromSourceCode(QOpenGLShader::Vertex,
@@ -81,6 +124,9 @@ void video_widget::initializeGL()
 
     matrix_uniform_loc_ = program_->uniformLocation("colorMatrix");
     glGenTextures(3, textures_);
+    tex_width_ = 0;
+    tex_height_ = 0;
+    texture_inited_ = false;
 
     color_matrix_ = get_color_matrix(AVCOL_SPC_BT470BG, AVCOL_RANGE_MPEG);
 }

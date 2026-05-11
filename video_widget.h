@@ -5,6 +5,7 @@
 #include <utility>
 #include <QOpenGLWidget>
 #include <QOpenGLFunctions>
+#include <QOpenGLContext>
 #include <QOpenGLShaderProgram>
 #include <QOpenGLTexture>
 #include <QMatrix4x4>
@@ -36,6 +37,7 @@ class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
     void paintGL() override;
 
    private:
+    void cleanup_gl_resources();
     void update_color_matrix(const AVFrame *frame);
     static QMatrix4x4 get_color_matrix(AVColorSpace space, AVColorRange range);
 
