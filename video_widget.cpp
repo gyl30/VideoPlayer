@@ -211,7 +211,8 @@ void video_widget::paintGL()
     const double frame_height = static_cast<double>(tex_height_);
     const double width_scale = widget_width / frame_width;
     const double height_scale = widget_height / frame_height;
-    const double scale = std::min(1.0, std::min(width_scale, height_scale));
+    const bool allow_upscale = window() != nullptr && window()->isFullScreen();
+    const double scale = allow_upscale ? std::min(width_scale, height_scale) : std::min(1.0, std::min(width_scale, height_scale));
     const double display_width = frame_width * scale;
     const double display_height = frame_height * scale;
 
