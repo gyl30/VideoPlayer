@@ -522,9 +522,15 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
                 }
             });
 
+    connect(btn_open_media_, &QPushButton::clicked, this, &main_window::on_open_file);
+    connect(btn_video_fullscreen_, &QPushButton::clicked, this, &main_window::on_toggle_fullscreen);
     connect(btn_playlist_, &QPushButton::clicked, this, &main_window::on_toggle_playlist);
     connect(btn_audio_only_, &QPushButton::toggled, this, &main_window::on_audio_only_toggled);
+    connect(btn_playlist_add_, &QPushButton::clicked, this, &main_window::on_add_files_to_selected_playlist);
+    connect(btn_playlist_play_, &QPushButton::clicked, this, &main_window::on_play_selected_playlist_file);
+    connect(btn_playlist_manage_, &QPushButton::clicked, this, [this]() { open_playlist_management_dialog(); });
     connect(playlist_view_, &QTreeWidget::itemDoubleClicked, this, &main_window::on_playlist_item_activated);
+    connect(playlist_view_, &QTreeWidget::itemSelectionChanged, this, [this]() { update_playlist_header_buttons(); });
     connect(playlist_view_, &QTreeWidget::customContextMenuRequested, this, &main_window::show_playlist_context_menu);
     connect(video_widget_, &QWidget::customContextMenuRequested, this,
             [this](const QPoint &pos)
@@ -573,7 +579,9 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     set_media_title_text("视频播放器");
     restore_persistent_state();
     update_volume_icon(volume_meter_ != nullptr ? volume_meter_->value() : 80);
+    update_fullscreen_button();
     update_playlist_buttons();
+    update_playlist_header_buttons();
 
     setMouseTracking(true);
     installEventFilter(this);
@@ -1290,6 +1298,18 @@ void main_window::update_title_maximize_button()
     btn_title_maximize_->setToolTip(isMaximized() ? "还原" : "最大化");
 }
 
+void main_window::update_fullscreen_button()
+{
+    if (btn_video_fullscreen_ == nullptr)
+    {
+        return;
+    }
+
+    const bool fullscreen = is_video_fullscreen();
+    btn_video_fullscreen_->setIcon(QIcon(fullscreen ? ":/icons/fullscreen-exit.svg" : ":/icons/fullscreen-enter.svg"));
+    btn_video_fullscreen_->setToolTip(fullscreen ? "退出全屏" : "全屏");
+}
+
 void main_window::set_playback_rate(double rate)
 {
     const double normalized_rate = std::clamp(rate, 0.5, 2.0);
@@ -1442,6 +1462,8 @@ void main_window::refresh_playlist_view()
     {
         playlist_view_->setCurrentItem(current_item);
     }
+
+    update_playlist_header_buttons();
 }
 
 void main_window::set_active_playlist(const QString &playlist_id)
@@ -1519,6 +1541,57 @@ void main_window::show_playlist_context_menu(const QPoint &pos)
     {
         open_playlist_management_dialog();
     }
+}
+
+QString main_window::selected_playlist_target_id() const
+{
+    if (playlist_view_ != nullptr)
+    {
+        if (QTreeWidgetItem *item = playlist_view_->currentItem())
+        {
+            const QString playlist_id = playlist_id_for_item(item);
+            if (!playlist_id.isEmpty())
+            {
+                return playlist_id;
+            }
+        }
+
+        const QList<QTreeWidgetItem *> items = playlist_view_->selectedItems();
+        for (QTreeWidgetItem *item : items)
+        {
+            const QString playlist_id = playlist_id_for_item(item);
+            if (!playlist_id.isEmpty())
+            {
+                return playlist_id;
+            }
+        }
+    }
+
+    return active_playlist_id();
+}
+
+QTreeWidgetItem *main_window::selected_playlist_file_item() const
+{
+    if (playlist_view_ == nullptr)
+    {
+        return nullptr;
+    }
+
+    if (QTreeWidgetItem *item = playlist_view_->currentItem(); is_playlist_file_item(item))
+    {
+        return item;
+    }
+
+    const QList<QTreeWidgetItem *> items = playlist_view_->selectedItems();
+    for (QTreeWidgetItem *item : items)
+    {
+        if (is_playlist_file_item(item))
+        {
+            return item;
+        }
+    }
+
+    return nullptr;
 }
 
 void main_window::open_playlist_management_dialog()
@@ -1823,12 +1896,18 @@ void main_window::exit_video_fullscreen()
         showNormal();
     }
     update_title_maximize_button();
+    update_fullscreen_button();
     this->activateWindow();
     this->raise();
     this->setFocus();
 }
 
 void main_window::on_open_file()
+{
+    open_files_into_playlist(active_playlist_id());
+}
+
+void main_window::open_files_into_playlist(const QString &playlist_id)
 {
     LOG_INFO("on open file clicked");
     QWidget *dialog_parent = this;
@@ -1848,16 +1927,16 @@ void main_window::on_open_file()
         return;
     }
 
-    const QString playlist_id = active_playlist_id();
+    const QString target_playlist_id = playlist_id.isEmpty() ? active_playlist_id() : playlist_id;
     int target_row = -1;
     for (const QString &filename : filenames)
     {
         const QString normalized_path = normalize_media_path(filename);
         LOG_INFO("open file selected {}", normalized_path.toStdString());
-        int row = playlist_store_.index_of_path(playlist_id, normalized_path);
-        if (row < 0 && playlist_store_.add_path(playlist_id, normalized_path))
+        int row = playlist_store_.index_of_path(target_playlist_id, normalized_path);
+        if (row < 0 && playlist_store_.add_path(target_playlist_id, normalized_path))
         {
-            const playlist_entry *entry = playlist_store_.playlist_by_id(playlist_id);
+            const playlist_entry *entry = playlist_store_.playlist_by_id(target_playlist_id);
             if (entry != nullptr)
             {
                 row = static_cast<int>(entry->paths.size() - 1);
@@ -1874,7 +1953,7 @@ void main_window::on_open_file()
     save_playlist_state();
     if (target_row >= 0)
     {
-        play_playlist_row(target_row);
+        play_playlist_item(target_playlist_id, target_row);
         if (is_video_fullscreen() && video_fullscreen_window_ != nullptr)
         {
             video_fullscreen_window_->activateWindow();
@@ -1882,6 +1961,22 @@ void main_window::on_open_file()
             video_fullscreen_window_->setFocus();
         }
     }
+}
+
+void main_window::on_add_files_to_selected_playlist()
+{
+    open_files_into_playlist(selected_playlist_target_id());
+}
+
+void main_window::on_play_selected_playlist_file()
+{
+    QTreeWidgetItem *item = selected_playlist_file_item();
+    if (item == nullptr)
+    {
+        return;
+    }
+
+    play_playlist_item(playlist_id_for_item(item), playlist_row_for_item(item));
 }
 
 void main_window::on_toggle_pause()
@@ -1928,6 +2023,22 @@ void main_window::on_toggle_fullscreen()
 {
     LOG_INFO("toggle fullscreen");
     is_video_fullscreen() ? exit_video_fullscreen() : enter_video_fullscreen();
+}
+
+void main_window::update_playlist_header_buttons()
+{
+    if (btn_playlist_add_ != nullptr)
+    {
+        btn_playlist_add_->setEnabled(!selected_playlist_target_id().isEmpty());
+    }
+    if (btn_playlist_play_ != nullptr)
+    {
+        btn_playlist_play_->setEnabled(selected_playlist_file_item() != nullptr);
+    }
+    if (btn_playlist_manage_ != nullptr)
+    {
+        btn_playlist_manage_->setEnabled(true);
+    }
 }
 
 void main_window::on_toggle_playlist()

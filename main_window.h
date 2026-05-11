@@ -67,17 +67,22 @@ class main_window : public QMainWindow
     void on_playlist_item_activated(QTreeWidgetItem *item, int column);
     void on_audio_only_toggled(bool checked);
     void on_video_frame_ready(std::shared_ptr<media_frame> frame);
+    void on_add_files_to_selected_playlist();
+    void on_play_selected_playlist_file();
 
    private:
     void stop_play();
     bool start_play(const std::string &filepath);
+    void open_files_into_playlist(const QString &playlist_id);
     void do_seek_relative(double seconds);
     void init_styles();
     void toggle_window_maximized();
     void update_title_maximize_button();
+    void update_fullscreen_button();
     void play_playlist_item(const QString &playlist_id, int row);
     void play_playlist_row(int row);
     void update_playlist_buttons();
+    void update_playlist_header_buttons();
     void finish_playback();
     void refresh_playlist_view();
     void set_active_playlist(const QString &playlist_id);
@@ -89,6 +94,8 @@ class main_window : public QMainWindow
     bool is_playlist_file_item(const QTreeWidgetItem *item) const;
     QString playlist_id_for_item(const QTreeWidgetItem *item) const;
     int playlist_row_for_item(const QTreeWidgetItem *item) const;
+    QString selected_playlist_target_id() const;
+    QTreeWidgetItem *selected_playlist_file_item() const;
     QString playback_playlist_id() const;
     int playback_playlist_row() const;
     void set_media_title_text(const QString &text);
