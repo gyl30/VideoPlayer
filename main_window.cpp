@@ -4,7 +4,6 @@
 #include <QFileInfo>
 #include <QFontMetrics>
 #include <QIcon>
-#include <QInputDialog>
 #include <QKeySequence>
 #include <QMenu>
 #include <QMouseEvent>
@@ -19,6 +18,7 @@
 #include <cmath>
 #include "log.h"
 #include "main_window.h"
+#include "playlist_name_dialog.h"
 #include "playlist_management_dialog.h"
 #include "volumemeter.h"
 
@@ -1815,55 +1815,13 @@ void main_window::open_files_into_playlist(const QString &playlist_id)
 
 void main_window::on_create_playlist()
 {
-    QInputDialog dialog(this);
-    dialog.setInputMode(QInputDialog::TextInput);
-    dialog.setWindowTitle("新建播放列表");
-    dialog.setLabelText("播放列表名称");
-    dialog.setTextValue("");
-    dialog.setOkButtonText("创建");
-    dialog.setCancelButtonText("取消");
-    dialog.resize(420, dialog.sizeHint().height());
-    dialog.setStyleSheet(
-        "QInputDialog {"
-        "    background: #071b30;"
-        "    color: #d8e0ea;"
-        "}"
-        "QLabel {"
-        "    color: #eef4fa;"
-        "    font-size: 14px;"
-        "}"
-        "QLineEdit {"
-        "    background: #0b1929;"
-        "    color: #f5fbff;"
-        "    border: 1px solid #1e7dbd;"
-        "    border-radius: 4px;"
-        "    padding: 8px 10px;"
-        "    min-height: 20px;"
-        "}"
-        "QPushButton {"
-        "    background: transparent;"
-        "    color: #f5fbff;"
-        "    border: none;"
-        "    border-radius: 2px;"
-        "    min-width: 64px;"
-        "    min-height: 36px;"
-        "    padding: 0 12px;"
-        "}"
-        "QPushButton:hover {"
-        "    background: rgba(255, 255, 255, 0.12);"
-        "    color: #ffffff;"
-        "}"
-        "QPushButton:pressed {"
-        "    background: rgba(8, 29, 49, 0.9);"
-        "}"
-    );
-
-    if (dialog.exec() != QDialog::Accepted)
+    bool accepted = false;
+    const QString name = playlist_name_dialog::get_text(this, "新建播放列表", "播放列表名称", "创建", "", &accepted);
+    if (!accepted)
     {
         return;
     }
 
-    const QString name = dialog.textValue();
     const QString playlist_id = playlist_store_.create_playlist(name);
     if (playlist_id.isEmpty())
     {

@@ -1,12 +1,12 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
-#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include "playlist_name_dialog.h"
 #include "playlist_management_dialog.h"
 
 namespace
@@ -49,55 +49,13 @@ void playlist_management_dialog::on_source_selection_changed() { update_action_b
 
 void playlist_management_dialog::on_create_playlist()
 {
-    QInputDialog dialog(this);
-    dialog.setInputMode(QInputDialog::TextInput);
-    dialog.setWindowTitle("新建播放列表");
-    dialog.setLabelText("播放列表名称");
-    dialog.setTextValue("");
-    dialog.setOkButtonText("创建");
-    dialog.setCancelButtonText("取消");
-    dialog.resize(420, dialog.sizeHint().height());
-    dialog.setStyleSheet(
-        "QInputDialog {"
-        "    background: #071b30;"
-        "    color: #d8e0ea;"
-        "}"
-        "QLabel {"
-        "    color: #eef4fa;"
-        "    font-size: 14px;"
-        "}"
-        "QLineEdit {"
-        "    background: #0b1929;"
-        "    color: #f5fbff;"
-        "    border: 1px solid #1e7dbd;"
-        "    border-radius: 4px;"
-        "    padding: 8px 10px;"
-        "    min-height: 20px;"
-        "}"
-        "QPushButton {"
-        "    background: transparent;"
-        "    color: #f5fbff;"
-        "    border: none;"
-        "    border-radius: 2px;"
-        "    min-width: 64px;"
-        "    min-height: 36px;"
-        "    padding: 0 12px;"
-        "}"
-        "QPushButton:hover {"
-        "    background: rgba(255, 255, 255, 0.12);"
-        "    color: #ffffff;"
-        "}"
-        "QPushButton:pressed {"
-        "    background: rgba(8, 29, 49, 0.9);"
-        "}"
-    );
-
-    if (dialog.exec() != QDialog::Accepted)
+    bool accepted = false;
+    const QString name = playlist_name_dialog::get_text(this, "新建播放列表", "播放列表名称", "创建", "", &accepted);
+    if (!accepted)
     {
         return;
     }
 
-    const QString name = dialog.textValue();
     const QString playlist_id = temp_store_.create_playlist(name);
     temp_store_.set_active_playlist(playlist_id);
     populate_playlist_lists();
@@ -113,8 +71,7 @@ void playlist_management_dialog::on_rename_playlist()
     }
 
     bool accepted = false;
-    const QString name =
-        QInputDialog::getText(this, "重命名播放列表", "播放列表名称：", QLineEdit::Normal, entry->name, &accepted);
+    const QString name = playlist_name_dialog::get_text(this, "重命名播放列表", "播放列表名称", "保存", entry->name, &accepted);
     if (!accepted || !temp_store_.rename_playlist(playlist_id, name))
     {
         return;

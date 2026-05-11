@@ -116,6 +116,7 @@ add_executable(VideoPlayer
     video_widget.cpp
     video_scaler.cpp
     playlist_store.cpp
+    playlist_name_dialog.cpp
     playlist_management_dialog.cpp
     main_window.cpp 
     volumemeter.cpp
