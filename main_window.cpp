@@ -378,12 +378,20 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_playback_rate_->setCursor(Qt::PointingHandCursor);
     btn_playback_rate_->setToolTip("播放速度");
 
+    btn_sequential_playback_ = new QPushButton("顺播", this);
+    btn_sequential_playback_->setObjectName("controlButtonWide");
+    btn_sequential_playback_->setCursor(Qt::PointingHandCursor);
+    btn_sequential_playback_->setCheckable(true);
+    btn_sequential_playback_->setChecked(false);
+    btn_sequential_playback_->setToolTip("播放结束后自动播放下一项");
+
     control_row->addWidget(lbl_time_);
     control_row->addStretch(1);
     control_row->addWidget(btn_stop_);
     control_row->addWidget(btn_backward_);
     control_row->addWidget(btn_play_pause_);
     control_row->addWidget(btn_forward_);
+    control_row->addWidget(btn_sequential_playback_);
     control_row->addStretch(1);
     control_row->addWidget(btn_playback_rate_);
     control_row->addWidget(lbl_vol_icon_low_);
@@ -1826,6 +1834,21 @@ void main_window::update_playlist_buttons()
 
 void main_window::finish_playback()
 {
+    if (btn_sequential_playback_ != nullptr && btn_sequential_playback_->isChecked() && playlist_view_ != nullptr)
+    {
+        const int next_row = playlist_view_->currentRow() + 1;
+        if (next_row >= 0 && next_row < playlist_view_->count())
+        {
+            QListWidgetItem *next_item = playlist_view_->item(next_row);
+            if (next_item != nullptr && !next_item->data(Qt::UserRole).toString().isEmpty())
+            {
+                LOG_INFO("playback reached end continuing to next row {}", next_row);
+                play_playlist_row(next_row);
+                return;
+            }
+        }
+    }
+
     LOG_INFO("playback reached end resetting ui");
     stop_play();
 
