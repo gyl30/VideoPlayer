@@ -7,6 +7,7 @@
 #include <QKeySequence>
 #include <QMouseEvent>
 #include <QSettings>
+#include <QCoreApplication>
 #include <QTime>
 #include <QToolTip>
 #include <QUrl>
@@ -806,6 +807,11 @@ void main_window::closeEvent(QCloseEvent *event)
     save_persistent_state();
     stop_play();
     QMainWindow::closeEvent(event);
+    if (event->isAccepted())
+    {
+        LOG_INFO("main window close accepted, quitting application");
+        QCoreApplication::quit();
+    }
 }
 
 bool main_window::eventFilter(QObject *watched, QEvent *event)
