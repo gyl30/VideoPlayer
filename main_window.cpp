@@ -127,8 +127,7 @@ void sync_playback_rate_combo(QComboBox *combo, double playback_rate)
     {
         const double item_rate = combo->itemData(i).toDouble();
         const bool current = std::abs(item_rate - playback_rate) < 0.0001;
-        combo->setItemText(i, current ? QString("%1  当前").arg(format_playback_rate_text(item_rate))
-                                      : format_playback_rate_text(item_rate));
+        combo->setItemText(i, format_playback_rate_text(item_rate));
         combo->setItemIcon(i, current ? current_icon : QIcon());
         if (current)
         {
