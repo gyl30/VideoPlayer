@@ -277,7 +277,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 
     control_panel_ = new QWidget(this);
     control_panel_->setObjectName("controlPanel");
-    control_panel_->setFixedHeight(124);
+    control_panel_->setFixedHeight(104);
 
     auto *control_layout = new QVBoxLayout(control_panel_);
     control_layout->setContentsMargins(0, 0, 0, 0);
@@ -285,7 +285,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 
     auto *seek_row = new QWidget(this);
     seek_row->setObjectName("seekRow");
-    seek_row->setFixedHeight(28);
+    seek_row->setFixedHeight(24);
 
     auto *seek_layout = new QHBoxLayout(seek_row);
     seek_layout->setContentsMargins(10, 0, 10, 0);
@@ -302,7 +302,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     slider_seek_->setRange(0, 0);
     slider_seek_->setEnabled(false);
     slider_seek_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    slider_seek_->setFixedHeight(18);
+    slider_seek_->setFixedHeight(16);
 
     auto *btn_seek_forward = new QPushButton(QIcon(":/icons/skip-forward-fill.svg"), QString(), this);
     btn_seek_forward->setObjectName("seekEdgeButton");
@@ -319,7 +319,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     control_bar->setObjectName("controlBar");
 
     auto *control_row = new QHBoxLayout(control_bar);
-    control_row->setContentsMargins(20, 8, 20, 10);
+    control_row->setContentsMargins(20, 5, 20, 6);
     control_row->setSpacing(10);
 
     lbl_time_ = new QLabel("00:00:00 / 00:00:00", this);
@@ -764,7 +764,7 @@ void main_window::init_styles()
         "    color: #f5fbff;"
         "    border: none;"
         "    border-radius: 2px;"
-        "    min-height: 54px;"
+        "    min-height: 46px;"
         "}"
         "QPushButton#controlButton {"
         "    min-width: 44px;"
@@ -806,8 +806,8 @@ void main_window::init_styles()
         "    border-radius: 2px;"
         "    min-width: 56px;"
         "    max-width: 56px;"
-        "    min-height: 58px;"
-        "    max-height: 58px;"
+        "    min-height: 48px;"
+        "    max-height: 48px;"
         "    font-size: 18px;"
         "}"
         "QPushButton#toolBlockButton:hover {"
