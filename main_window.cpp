@@ -1857,6 +1857,7 @@ void main_window::stop_play()
     LOG_INFO("stopping sync thread");
     if (sync_thread_ != nullptr)
     {
+        disconnect(sync_thread_.get(), nullptr, video_widget_, nullptr);
         sync_thread_->stop();
         sync_thread_->wait();
         sync_thread_.reset();
@@ -1895,6 +1896,7 @@ void main_window::stop_play()
 
     if (video_widget_ != nullptr)
     {
+        QCoreApplication::removePostedEvents(video_widget_, QEvent::MetaCall);
         video_widget_->clear();
     }
     current_media_path_.clear();
