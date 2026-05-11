@@ -2,6 +2,50 @@
 #include "log.h"
 #include "video_widget.h"
 
+extern "C"
+{
+#include <libavutil/mathematics.h>
+#include <libavutil/rational.h>
+}
+
+namespace
+{
+struct display_rect
+{
+    int width = 1;
+    int height = 1;
+};
+
+display_rect calculate_display_rect(int scr_width, int scr_height, int pic_width, int pic_height, AVRational pic_sar)
+{
+    AVRational aspect_ratio = pic_sar;
+    int64_t width = 0;
+    int64_t height = 0;
+
+    if (scr_width <= 0 || scr_height <= 0 || pic_width <= 0 || pic_height <= 0)
+    {
+        return {};
+    }
+
+    if (av_cmp_q(aspect_ratio, av_make_q(0, 1)) <= 0)
+    {
+        aspect_ratio = av_make_q(1, 1);
+    }
+
+    aspect_ratio = av_mul_q(aspect_ratio, av_make_q(pic_width, pic_height));
+
+    height = scr_height;
+    width = av_rescale(height, aspect_ratio.num, aspect_ratio.den) & ~1LL;
+    if (width > scr_width)
+    {
+        width = scr_width;
+        height = av_rescale(width, aspect_ratio.den, aspect_ratio.num) & ~1LL;
+    }
+
+    return {std::max(1, static_cast<int>(width)), std::max(1, static_cast<int>(height))};
+}
+}  // namespace
+
 video_widget::video_widget(QWidget *parent) : QOpenGLWidget(parent) { LOG_INFO("video widget constructed"); }
 
 video_widget::~video_widget()
@@ -199,25 +243,12 @@ void video_widget::paintGL()
         program_->setUniformValue(matrix_uniform_loc_, color_matrix_);
     }
 
-    double pixel_aspect_ratio = 1.0;
-    if (raw->sample_aspect_ratio.num > 0 && raw->sample_aspect_ratio.den > 0)
-    {
-        pixel_aspect_ratio = static_cast<double>(raw->sample_aspect_ratio.num) / static_cast<double>(raw->sample_aspect_ratio.den);
-    }
+    const int widget_width = std::max(width(), 1);
+    const int widget_height = std::max(height(), 1);
+    const display_rect rect = calculate_display_rect(widget_width, widget_height, tex_width_, tex_height_, raw->sample_aspect_ratio);
 
-    const double widget_width = width() > 0 ? static_cast<double>(width()) : 1.0;
-    const double widget_height = height() > 0 ? static_cast<double>(height()) : 1.0;
-    const double frame_width = static_cast<double>(tex_width_) * pixel_aspect_ratio;
-    const double frame_height = static_cast<double>(tex_height_);
-    const double width_scale = widget_width / frame_width;
-    const double height_scale = widget_height / frame_height;
-    const bool allow_upscale = window() != nullptr && window()->isFullScreen();
-    const double scale = allow_upscale ? std::min(width_scale, height_scale) : std::min(1.0, std::min(width_scale, height_scale));
-    const double display_width = frame_width * scale;
-    const double display_height = frame_height * scale;
-
-    const GLfloat x_scale = static_cast<GLfloat>(display_width / widget_width);
-    const GLfloat y_scale = static_cast<GLfloat>(display_height / widget_height);
+    const GLfloat x_scale = static_cast<GLfloat>(static_cast<double>(rect.width) / static_cast<double>(widget_width));
+    const GLfloat y_scale = static_cast<GLfloat>(static_cast<double>(rect.height) / static_cast<double>(widget_height));
 
     const GLfloat vertices[] = {-x_scale, -y_scale, x_scale, -y_scale, -x_scale, y_scale, x_scale, y_scale};
     static const GLfloat texCoords[] = {0.0F, 1.0F, 1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F};
