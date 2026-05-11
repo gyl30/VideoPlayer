@@ -1332,11 +1332,9 @@ void main_window::enter_video_fullscreen()
 
     if (video_fullscreen_window_ == nullptr)
     {
-        video_fullscreen_window_ = new QWidget(this, Qt::Window | Qt::FramelessWindowHint);
+        video_fullscreen_window_ = new QWidget(nullptr, Qt::Window | Qt::FramelessWindowHint);
         video_fullscreen_window_->setObjectName("videoFullscreenWindow");
         video_fullscreen_window_->setFocusPolicy(Qt::StrongFocus);
-        video_fullscreen_window_->setWindowTitle(this->windowTitle());
-        video_fullscreen_window_->setWindowIcon(this->windowIcon());
         video_fullscreen_window_->setStyleSheet("background: #000000;");
         video_fullscreen_window_->installEventFilter(this);
 
@@ -1345,12 +1343,15 @@ void main_window::enter_video_fullscreen()
         video_fullscreen_layout_->setSpacing(0);
     }
 
+    video_fullscreen_window_->setWindowTitle(this->windowTitle());
+    video_fullscreen_window_->setWindowIcon(this->windowIcon());
     video_frame_layout_->removeWidget(video_widget_);
     video_widget_->setParent(video_fullscreen_window_);
     video_fullscreen_layout_->addWidget(video_widget_, 1);
     video_widget_->show();
 
     video_fullscreen_window_->showFullScreen();
+    this->hide();
     video_fullscreen_window_->activateWindow();
     video_fullscreen_window_->raise();
     video_fullscreen_window_->setFocus();
@@ -1379,8 +1380,14 @@ void main_window::exit_video_fullscreen()
 void main_window::on_open_file()
 {
     LOG_INFO("on open file clicked");
+    QWidget *dialog_parent = this;
+    if (is_video_fullscreen() && video_fullscreen_window_ != nullptr)
+    {
+        dialog_parent = video_fullscreen_window_;
+    }
+
     const QStringList filenames = QFileDialog::getOpenFileNames(
-        this,
+        dialog_parent,
         "打开媒体文件",
         "",
         "Media Files (*.mp4 *.mkv *.avi *.mov *.flv *.webm *.mp3 *.flac *.wav *.aac *.ogg);;Video Files (*.mp4 *.mkv *.avi *.mov *.flv *.webm);;Audio Files (*.mp3 *.flac *.wav *.aac *.ogg);;All Files (*)");
@@ -1429,6 +1436,12 @@ void main_window::on_open_file()
     if (target_row >= 0)
     {
         play_playlist_row(target_row);
+        if (is_video_fullscreen() && video_fullscreen_window_ != nullptr)
+        {
+            video_fullscreen_window_->activateWindow();
+            video_fullscreen_window_->raise();
+            video_fullscreen_window_->setFocus();
+        }
     }
 }
 
@@ -1649,6 +1662,11 @@ void main_window::play_playlist_row(int row)
 
     const QString display_name = QFileInfo(path).fileName();
     this->setWindowTitle(display_name + " - 视频播放器");
+    if (video_fullscreen_window_ != nullptr)
+    {
+        video_fullscreen_window_->setWindowTitle(this->windowTitle());
+        video_fullscreen_window_->setWindowIcon(this->windowIcon());
+    }
     set_media_title_text(display_name);
 }
 
