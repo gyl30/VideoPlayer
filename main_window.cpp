@@ -481,8 +481,8 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     control_row->addWidget(volume_meter_);
     control_row->addSpacing(12);
     control_row->addWidget(btn_open_media_);
-    control_row->addWidget(btn_video_fullscreen_);
     control_row->addWidget(btn_playlist_);
+    control_row->addWidget(btn_video_fullscreen_);
 
     control_layout->addWidget(control_bar, 1);
 
@@ -799,6 +799,9 @@ void main_window::init_styles()
         "QPushButton#playlistHeaderButton:hover {"
         "    background: rgba(255, 255, 255, 0.1);"
         "}"
+        "QPushButton#playlistHeaderButton:disabled {"
+        "    color: rgba(216, 224, 234, 0.35);"
+        "}"
         "QPushButton#playlistHeaderButton:pressed {"
         "    background: rgba(0, 0, 0, 0.18);"
         "}"
@@ -935,6 +938,10 @@ void main_window::init_styles()
         "QPushButton#toolBlockButton:hover {"
         "    background: rgba(255, 255, 255, 0.12);"
         "    color: #ffffff;"
+        "}"
+        "QPushButton#toolBlockButton:disabled {"
+        "    color: rgba(245, 251, 255, 0.32);"
+        "    background: transparent;"
         "}"
         "QPushButton#toolBlockButton:checked {"
         "    background: rgba(36, 125, 189, 0.82);"
