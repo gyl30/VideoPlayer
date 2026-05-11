@@ -1528,6 +1528,20 @@ int main_window::playlist_row_for_item(const QTreeWidgetItem *item) const
     return item->data(0, k_playlist_row_role).toInt();
 }
 
+QString main_window::playback_playlist_id() const
+{
+    return current_playback_playlist_id_.isEmpty() ? active_playlist_id() : current_playback_playlist_id_;
+}
+
+int main_window::playback_playlist_row() const
+{
+    if (current_playback_row_ >= 0)
+    {
+        return current_playback_row_;
+    }
+    return playlist_store_.current_row(playback_playlist_id());
+}
+
 void main_window::restore_persistent_state()
 {
     QSettings settings(k_settings_org, k_settings_app);
@@ -1845,20 +1859,21 @@ void main_window::on_toggle_playlist()
 
 void main_window::on_play_previous()
 {
-    const int row = playlist_store_.current_row(active_playlist_id());
+    const int row = playback_playlist_row();
     if (row > 0)
     {
-        play_playlist_row(row - 1);
+        play_playlist_item(playback_playlist_id(), row - 1);
     }
 }
 
 void main_window::on_play_next()
 {
-    const playlist_entry *entry = playlist_store_.active_playlist();
-    const int row = playlist_store_.current_row(active_playlist_id());
+    const QString playlist_id = playback_playlist_id();
+    const playlist_entry *entry = playlist_store_.playlist_by_id(playlist_id);
+    const int row = playback_playlist_row();
     if (entry != nullptr && row >= 0 && row + 1 < entry->paths.size())
     {
-        play_playlist_row(row + 1);
+        play_playlist_item(playlist_id, row + 1);
     }
 }
 
@@ -1866,8 +1881,7 @@ void main_window::on_playlist_item_activated(QTreeWidgetItem *item, int)
 {
     if (is_playlist_file_item(item))
     {
-        set_active_playlist(playlist_id_for_item(item));
-        play_playlist_row(playlist_row_for_item(item));
+        play_playlist_item(playlist_id_for_item(item), playlist_row_for_item(item));
     }
     else if (is_playlist_item(item))
     {
@@ -1982,9 +1996,8 @@ void main_window::on_update_ui()
     save_current_playback_progress();
 }
 
-void main_window::play_playlist_row(int row)
+void main_window::play_playlist_item(const QString &playlist_id, int row)
 {
-    const QString playlist_id = active_playlist_id();
     const playlist_entry *entry = playlist_store_.playlist_by_id(playlist_id);
     if (entry == nullptr || row < 0 || row >= entry->paths.size())
     {
@@ -2007,6 +2020,9 @@ void main_window::play_playlist_row(int row)
 
     current_media_path_ = path;
     last_saved_progress_second_ = -1;
+    current_playback_playlist_id_ = playlist_id;
+    current_playback_row_ = row;
+    playlist_store_.set_active_playlist(playlist_id);
     playlist_store_.set_current_row(playlist_id, row);
     refresh_playlist_view();
     update_playlist_buttons();
@@ -2023,11 +2039,13 @@ void main_window::play_playlist_row(int row)
     set_media_title_text(display_name);
 }
 
+void main_window::play_playlist_row(int row) { play_playlist_item(active_playlist_id(), row); }
+
 void main_window::update_playlist_buttons()
 {
-    const playlist_entry *entry = playlist_store_.active_playlist();
+    const playlist_entry *entry = playing_ ? playlist_store_.playlist_by_id(playback_playlist_id()) : playlist_store_.active_playlist();
     const int file_count = entry == nullptr ? 0 : static_cast<int>(entry->paths.size());
-    const int row = playlist_store_.current_row(active_playlist_id());
+    const int row = playing_ ? playback_playlist_row() : playlist_store_.current_row(active_playlist_id());
     const bool has_current = row >= 0 && row < file_count;
 
     btn_backward_->setEnabled(has_current && row > 0);
@@ -2037,8 +2055,9 @@ void main_window::update_playlist_buttons()
 
 void main_window::finish_playback()
 {
-    const playlist_entry *entry = playlist_store_.active_playlist();
-    const int current_row = playlist_store_.current_row(active_playlist_id());
+    const QString playlist_id = playback_playlist_id();
+    const playlist_entry *entry = playlist_store_.playlist_by_id(playlist_id);
+    const int current_row = playback_playlist_row();
     if (btn_sequential_playback_ != nullptr && btn_sequential_playback_->isChecked() && entry != nullptr)
     {
         const int next_row = current_row + 1;
@@ -2047,7 +2066,7 @@ void main_window::finish_playback()
             if (!entry->paths[next_row].isEmpty())
             {
                 LOG_INFO("playback reached end continuing to next row {}", next_row);
-                play_playlist_row(next_row);
+                play_playlist_item(playlist_id, next_row);
                 return;
             }
         }
@@ -2156,6 +2175,8 @@ void main_window::stop_play()
         video_widget_->clear();
     }
     current_media_path_.clear();
+    current_playback_playlist_id_.clear();
+    current_playback_row_ = -1;
     last_saved_progress_second_ = -1;
     LOG_INFO("stop play finished");
 }

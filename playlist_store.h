@@ -40,6 +40,8 @@ class playlist_store
     bool set_active_playlist(const QString &id);
     bool set_current_row(const QString &id, int row);
     bool add_path(const QString &id, const QString &path);
+    bool copy_rows(const QString &source_id, const QList<int> &rows, const QString &target_id);
+    bool move_rows(const QString &source_id, const QList<int> &rows, const QString &target_id);
     bool remove_rows(const QString &id, const QList<int> &rows);
 
     [[nodiscard]] static QString default_playlist_name();

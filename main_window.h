@@ -72,6 +72,7 @@ class main_window : public QMainWindow
     void init_styles();
     void toggle_window_maximized();
     void update_title_maximize_button();
+    void play_playlist_item(const QString &playlist_id, int row);
     void play_playlist_row(int row);
     void update_playlist_buttons();
     void finish_playback();
@@ -87,6 +88,8 @@ class main_window : public QMainWindow
     bool is_playlist_file_item(const QTreeWidgetItem *item) const;
     QString playlist_id_for_item(const QTreeWidgetItem *item) const;
     int playlist_row_for_item(const QTreeWidgetItem *item) const;
+    QString playback_playlist_id() const;
+    int playback_playlist_row() const;
     void set_media_title_text(const QString &text);
     void update_media_title_text();
     void on_title_scroll_tick();
@@ -152,9 +155,11 @@ class main_window : public QMainWindow
     QRect fullscreen_restore_geometry_;
     bool fullscreen_restore_maximized_ = false;
     QString current_media_path_;
+    QString current_playback_playlist_id_;
     QString media_title_full_text_ = "视频播放器";
     int media_title_scroll_offset_ = 0;
     int last_saved_progress_second_ = -1;
+    int current_playback_row_ = -1;
     double playback_rate_ = 1.0;
     playlist_store playlist_store_;
 

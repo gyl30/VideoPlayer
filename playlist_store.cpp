@@ -13,6 +13,23 @@ QString normalize_playlist_name(const QString &name)
     }
     return playlist_store::default_playlist_name();
 }
+
+QList<int> normalize_rows(const QList<int> &rows, int max_size)
+{
+    QList<int> normalized = rows;
+    std::sort(normalized.begin(), normalized.end());
+    normalized.erase(std::unique(normalized.begin(), normalized.end()), normalized.end());
+
+    QList<int> valid_rows;
+    for (int row : normalized)
+    {
+        if (row >= 0 && row < max_size)
+        {
+            valid_rows.append(row);
+        }
+    }
+    return valid_rows;
+}
 }  // namespace
 
 void playlist_store::load(QSettings &settings)
@@ -248,6 +265,57 @@ bool playlist_store::add_path(const QString &id, const QString &path)
     return true;
 }
 
+bool playlist_store::copy_rows(const QString &source_id, const QList<int> &rows, const QString &target_id)
+{
+    if (source_id == target_id)
+    {
+        return false;
+    }
+
+    const int source_index = find_index_by_id(source_id);
+    const int target_index = find_index_by_id(target_id);
+    if (source_index < 0 || target_index < 0)
+    {
+        return false;
+    }
+
+    const QList<int> valid_rows = normalize_rows(rows, static_cast<int>(playlists_[source_index].paths.size()));
+    if (valid_rows.isEmpty())
+    {
+        return false;
+    }
+
+    bool changed = false;
+    for (int row : valid_rows)
+    {
+        const QString &path = playlists_[source_index].paths[row];
+        if (!playlists_[target_index].paths.contains(path))
+        {
+            playlists_[target_index].paths.append(path);
+            changed = true;
+        }
+    }
+
+    if (changed && playlists_[target_index].current_row < 0)
+    {
+        playlists_[target_index].current_row = 0;
+    }
+
+    return changed;
+}
+
+bool playlist_store::move_rows(const QString &source_id, const QList<int> &rows, const QString &target_id)
+{
+    if (source_id == target_id)
+    {
+        return false;
+    }
+
+    const bool copied = copy_rows(source_id, rows, target_id);
+    const bool removed = remove_rows(source_id, rows);
+    return copied || removed;
+}
+
 bool playlist_store::remove_rows(const QString &id, const QList<int> &rows)
 {
     const int index = find_index_by_id(id);
@@ -256,15 +324,28 @@ bool playlist_store::remove_rows(const QString &id, const QList<int> &rows)
         return false;
     }
 
-    QList<int> sorted_rows = rows;
+    const QList<int> valid_rows = normalize_rows(rows, static_cast<int>(playlists_[index].paths.size()));
+    if (valid_rows.isEmpty())
+    {
+        return false;
+    }
+
+    QList<int> sorted_rows = valid_rows;
     std::sort(sorted_rows.begin(), sorted_rows.end(), std::greater<int>());
 
     bool removed = false;
+    const int original_current_row = playlists_[index].current_row;
+    int removed_before_current_row = 0;
+    bool removed_current_row = false;
     for (int row : sorted_rows)
     {
-        if (row < 0 || row >= playlists_[index].paths.size())
+        if (row == original_current_row)
         {
-            continue;
+            removed_current_row = true;
+        }
+        else if (row < original_current_row)
+        {
+            ++removed_before_current_row;
         }
         playlists_[index].paths.removeAt(row);
         removed = true;
@@ -279,9 +360,19 @@ bool playlist_store::remove_rows(const QString &id, const QList<int> &rows)
     {
         playlists_[index].current_row = -1;
     }
-    else if (playlists_[index].current_row >= playlists_[index].paths.size())
+    else if (original_current_row < 0)
     {
-        playlists_[index].current_row = static_cast<int>(playlists_[index].paths.size() - 1);
+        playlists_[index].current_row = 0;
+    }
+    else if (removed_current_row)
+    {
+        const int next_row = original_current_row - removed_before_current_row;
+        playlists_[index].current_row = std::clamp(next_row, 0, static_cast<int>(playlists_[index].paths.size() - 1));
+    }
+    else
+    {
+        const int next_row = original_current_row - removed_before_current_row;
+        playlists_[index].current_row = std::clamp(next_row, 0, static_cast<int>(playlists_[index].paths.size() - 1));
     }
 
     return true;
