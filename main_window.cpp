@@ -339,6 +339,9 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
                 QMenu menu(this);
                 QAction *open_action = menu.addAction("打开");
                 QAction *fullscreen_action = menu.addAction(is_video_fullscreen() ? "退出全屏" : "全屏");
+                QAction *tile_action = menu.addAction("平铺播放");
+                tile_action->setCheckable(true);
+                tile_action->setChecked(video_widget_->current_display_mode() == video_widget::display_mode::fill);
                 QAction *chosen = menu.exec(video_widget_->mapToGlobal(pos));
                 if (chosen == open_action)
                 {
@@ -347,6 +350,10 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
                 else if (chosen == fullscreen_action)
                 {
                     on_toggle_fullscreen();
+                }
+                else if (chosen == tile_action)
+                {
+                    video_widget_->set_display_mode(tile_action->isChecked() ? video_widget::display_mode::fill : video_widget::display_mode::fit);
                 }
             });
 

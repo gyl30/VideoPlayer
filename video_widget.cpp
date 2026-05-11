@@ -21,6 +21,18 @@ void video_widget::clear()
     update();
 }
 
+void video_widget::set_display_mode(display_mode mode)
+{
+    if (display_mode_ == mode)
+    {
+        return;
+    }
+
+    display_mode_ = mode;
+    LOG_INFO("video widget display mode changed to {}", display_mode_ == display_mode::fill ? "fill" : "fit");
+    update();
+}
+
 void video_widget::on_frame_ready(std::shared_ptr<media_frame> frame)
 {
     if (frame == nullptr)
@@ -152,7 +164,41 @@ void video_widget::paintGL()
         program_->setUniformValue(matrix_uniform_loc_, color_matrix_);
     }
 
-    static const GLfloat vertices[] = {-1.0F, -1.0F, 1.0F, -1.0F, -1.0F, 1.0F, 1.0F, 1.0F};
+    double pixel_aspect_ratio = 1.0;
+    if (raw->sample_aspect_ratio.num > 0 && raw->sample_aspect_ratio.den > 0)
+    {
+        pixel_aspect_ratio = static_cast<double>(raw->sample_aspect_ratio.num) / static_cast<double>(raw->sample_aspect_ratio.den);
+    }
+
+    const double frame_aspect_ratio = (static_cast<double>(tex_width_) * pixel_aspect_ratio) / static_cast<double>(tex_height_);
+    const double widget_aspect_ratio = static_cast<double>(width()) / static_cast<double>(height());
+
+    GLfloat x_scale = 1.0F;
+    GLfloat y_scale = 1.0F;
+    if (display_mode_ == display_mode::fit)
+    {
+        if (frame_aspect_ratio > widget_aspect_ratio)
+        {
+            y_scale = static_cast<GLfloat>(widget_aspect_ratio / frame_aspect_ratio);
+        }
+        else if (frame_aspect_ratio < widget_aspect_ratio)
+        {
+            x_scale = static_cast<GLfloat>(frame_aspect_ratio / widget_aspect_ratio);
+        }
+    }
+    else
+    {
+        if (frame_aspect_ratio > widget_aspect_ratio)
+        {
+            x_scale = static_cast<GLfloat>(frame_aspect_ratio / widget_aspect_ratio);
+        }
+        else if (frame_aspect_ratio < widget_aspect_ratio)
+        {
+            y_scale = static_cast<GLfloat>(widget_aspect_ratio / frame_aspect_ratio);
+        }
+    }
+
+    const GLfloat vertices[] = {-x_scale, -y_scale, x_scale, -y_scale, -x_scale, y_scale, x_scale, y_scale};
     static const GLfloat texCoords[] = {0.0F, 1.0F, 1.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F};
 
     const int posLoc = program_->attributeLocation("position");

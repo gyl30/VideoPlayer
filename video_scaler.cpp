@@ -55,6 +55,7 @@ bool video_scaler::convert(const AVFrame *src, AVFrame *dst)
     sws_scale(sws_ctx_, src->data, src->linesize, 0, src->height, dst->data, dst->linesize);
 
     dst->pts = src->pts;
+    dst->sample_aspect_ratio = src->sample_aspect_ratio;
 
     return true;
 }
