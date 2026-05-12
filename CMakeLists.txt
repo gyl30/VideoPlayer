@@ -159,3 +159,7 @@ target_link_libraries(VideoPlayer PRIVATE
     SDL2::SDL2
     PkgConfig::FFMPEG
 )
+
+if(WIN32)
+    target_link_libraries(VideoPlayer PRIVATE Qt6::EntryPoint)
+endif()
