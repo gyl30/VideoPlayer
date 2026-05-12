@@ -161,5 +161,8 @@ target_link_libraries(VideoPlayer PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(VideoPlayer PRIVATE Qt6::EntryPoint)
+    set_target_properties(VideoPlayer PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+if(APPLE)
+    set_target_properties(VideoPlayer PROPERTIES MACOSX_BUNDLE TRUE)
 endif()
