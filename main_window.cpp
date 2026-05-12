@@ -5,10 +5,12 @@
 #include <QDragEnterEvent>
 #include <QDir>
 #include <QDirIterator>
+#include <QDialog>
 #include <QDropEvent>
 #include <QFileInfo>
 #include <QFile>
 #include <QFontMetrics>
+#include <QHeaderView>
 #include <QIcon>
 #include <QCursor>
 #include <QKeySequence>
@@ -19,6 +21,7 @@
 #include <QSettings>
 #include <QShortcut>
 #include <QSet>
+#include <QTableWidget>
 #include <QCoreApplication>
 #include <QStandardPaths>
 #include <QStyle>
@@ -1801,23 +1804,194 @@ void main_window::clear_recent_history()
 void main_window::show_shortcuts_help()
 {
     QWidget *dialog_parent = is_video_fullscreen() && video_fullscreen_window_ != nullptr ? video_fullscreen_window_ : this;
+    QDialog dialog(dialog_parent);
+    dialog.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
+    dialog.setModal(true);
+    dialog.setWindowTitle("快捷键说明");
+    dialog.resize(520, 420);
+    dialog.setObjectName("shortcutsHelpDialog");
+    dialog.setStyleSheet(
+        "QDialog#shortcutsHelpDialog {"
+        "    background: #071728;"
+        "    color: #d8e0ea;"
+        "    border: 1px solid #173b60;"
+        "}"
+        "QWidget#dialogTitleBar {"
+        "    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1b5d92, stop:0.42 #15466f, stop:1 #0b2239);"
+        "    border-bottom: 1px solid #06111c;"
+        "}"
+        "QLabel#dialogTitleLabel {"
+        "    color: #f2f7fb;"
+        "    font-size: 15px;"
+        "    font-weight: 700;"
+        "}"
+        "QPushButton#dialogCloseButton {"
+        "    background: transparent;"
+        "    border: none;"
+        "    min-width: 42px;"
+        "    max-width: 42px;"
+        "    min-height: 42px;"
+        "    max-height: 42px;"
+        "}"
+        "QPushButton#dialogCloseButton:hover {"
+        "    background: rgba(255, 255, 255, 0.12);"
+        "}"
+        "QPushButton#dialogCloseButton:pressed {"
+        "    background: rgba(0, 0, 0, 0.2);"
+        "}"
+        "QTableWidget {"
+        "    background: #091523;"
+        "    color: #d8e7f6;"
+        "    border: 1px solid #14324f;"
+        "    border-radius: 8px;"
+        "    gridline-color: rgba(131, 215, 255, 0.08);"
+        "    outline: none;"
+        "    selection-background-color: #1b5f87;"
+        "    selection-color: #ffffff;"
+        "}"
+        "QHeaderView::section {"
+        "    background: #0f253d;"
+        "    color: #eef4fa;"
+        "    border: none;"
+        "    border-bottom: 1px solid #173b60;"
+        "    padding: 8px 10px;"
+        "    font-weight: 700;"
+        "}"
+        "QTableWidget::item {"
+        "    padding: 8px 10px;"
+        "    border: none;"
+        "}"
+        "QTableWidget::item:selected {"
+        "    background: #1b5f87;"
+        "    color: #ffffff;"
+        "}"
+        "QScrollBar:vertical {"
+        "    background: transparent;"
+        "    width: 10px;"
+        "    margin: 4px 2px 4px 0;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "    background: rgba(131, 215, 255, 0.38);"
+        "    border-radius: 4px;"
+        "    min-height: 28px;"
+        "}"
+        "QScrollBar::handle:vertical:hover {"
+        "    background: rgba(131, 215, 255, 0.56);"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "    height: 0;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "    background: transparent;"
+        "}"
+        "QPushButton#dialogActionButton {"
+        "    background: rgba(255, 255, 255, 0.06);"
+        "    color: #f5fbff;"
+        "    border: none;"
+        "    border-radius: 8px;"
+        "    min-width: 84px;"
+        "    min-height: 38px;"
+        "    padding: 0 14px;"
+        "}"
+        "QPushButton#dialogActionButton:hover {"
+        "    background: rgba(255, 255, 255, 0.12);"
+        "}"
+        "QPushButton#dialogActionButton:pressed {"
+        "    background: rgba(8, 29, 49, 0.9);"
+        "}");
 
-    QMessageBox message_box(dialog_parent);
-    message_box.setWindowTitle("快捷键说明");
-    message_box.setIcon(QMessageBox::Information);
-    message_box.setTextFormat(Qt::PlainText);
-    message_box.setText(
-        "Ctrl+O    打开文件\n"
-        "Ctrl+H    最近播放\n"
-        "Ctrl+Shift+S    截图\n"
-        "Ctrl+L    顺播开关\n"
-        "?    显示快捷键说明\n"
-        "Space    播放/暂停\n"
-        "Left / Right    快退 / 快进 5 秒\n"
-        "Up / Down    音量加 / 减\n"
-        "F / F11    切换全屏\n"
-        "Esc    退出全屏");
-    message_box.exec();
+    auto *main_layout = new QVBoxLayout(&dialog);
+    main_layout->setContentsMargins(0, 0, 0, 0);
+    main_layout->setSpacing(0);
+
+    auto *title_bar = new QWidget(&dialog);
+    title_bar->setObjectName("dialogTitleBar");
+    title_bar->setFixedHeight(42);
+    auto *title_layout = new QHBoxLayout(title_bar);
+    title_layout->setContentsMargins(14, 0, 0, 0);
+    title_layout->setSpacing(0);
+
+    auto *title_label = new QLabel("快捷键说明", title_bar);
+    title_label->setObjectName("dialogTitleLabel");
+
+    auto *btn_close = new QPushButton(QIcon(":/icons/title-close.svg"), QString(), title_bar);
+    btn_close->setObjectName("dialogCloseButton");
+    btn_close->setCursor(Qt::PointingHandCursor);
+    btn_close->setIconSize(QSize(14, 14));
+    btn_close->setToolTip("关闭");
+
+    title_layout->addWidget(title_label);
+    title_layout->addStretch(1);
+    title_layout->addWidget(btn_close);
+
+    auto *body = new QWidget(&dialog);
+    auto *body_layout = new QVBoxLayout(body);
+    body_layout->setContentsMargins(16, 16, 16, 16);
+    body_layout->setSpacing(12);
+
+    auto *table = new QTableWidget(10, 2, body);
+    table->setHorizontalHeaderLabels(QStringList{"快捷键", "功能"});
+    table->verticalHeader()->setVisible(false);
+    table->horizontalHeader()->setStretchLastSection(true);
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setSelectionMode(QAbstractItemView::NoSelection);
+    table->setFocusPolicy(Qt::NoFocus);
+    table->setShowGrid(true);
+    table->setAlternatingRowColors(false);
+    table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    table->setWordWrap(false);
+
+    const QList<QPair<QString, QString>> shortcut_items = {
+        {"Ctrl+O", "打开文件"},
+        {"Ctrl+H", "最近播放"},
+        {"Ctrl+Shift+S", "截图"},
+        {"Ctrl+L", "顺播开关"},
+        {"?", "显示快捷键说明"},
+        {"Space", "播放/暂停"},
+        {"Left / Right", "快退 / 快进 5 秒"},
+        {"Up / Down", "音量加 / 减"},
+        {"F / F11", "切换全屏"},
+        {"Esc", "退出全屏"}};
+
+    for (int row = 0; row < shortcut_items.size(); ++row)
+    {
+        auto *shortcut_item = new QTableWidgetItem(shortcut_items[row].first);
+        auto *action_item = new QTableWidgetItem(shortcut_items[row].second);
+        shortcut_item->setTextAlignment(Qt::AlignCenter);
+        action_item->setTextAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+        table->setItem(row, 0, shortcut_item);
+        table->setItem(row, 1, action_item);
+        table->setRowHeight(row, 34);
+    }
+
+    auto *button_row = new QWidget(body);
+    auto *button_layout = new QHBoxLayout(button_row);
+    button_layout->setContentsMargins(0, 0, 0, 0);
+    button_layout->setSpacing(0);
+
+    auto *btn_ok = new QPushButton("关闭", button_row);
+    btn_ok->setObjectName("dialogActionButton");
+    btn_ok->setCursor(Qt::PointingHandCursor);
+
+    button_layout->addStretch(1);
+    button_layout->addWidget(btn_ok);
+
+    body_layout->addWidget(table, 1);
+    body_layout->addWidget(button_row);
+
+    main_layout->addWidget(title_bar);
+    main_layout->addWidget(body, 1);
+
+    connect(btn_close, &QPushButton::clicked, &dialog, &QDialog::reject);
+    connect(btn_ok, &QPushButton::clicked, &dialog, &QDialog::accept);
+
+    if (dialog_parent != nullptr)
+    {
+        dialog.move(dialog_parent->frameGeometry().center() - dialog.rect().center());
+    }
+
+    dialog.exec();
 }
 
 void main_window::show_open_media_menu()
