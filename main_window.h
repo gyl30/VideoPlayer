@@ -85,8 +85,8 @@ class main_window : public QMainWindow
     void schedule_hide_playlist_scrollbar();
     bool is_cursor_in_playlist_panel() const;
     bool is_playlist_region_object(const QObject *watched) const;
-    void play_playlist_item(const QString &playlist_id, int row);
-    void play_playlist_row(int row);
+    void play_playlist_item(const QString &playlist_id, int row, bool allow_resume_prompt = true);
+    void play_playlist_row(int row, bool allow_resume_prompt = true);
     void update_playlist_buttons();
     void update_playlist_header_buttons();
     void finish_playback();
@@ -121,7 +121,7 @@ class main_window : public QMainWindow
     void record_playback_history_open(const QString &path);
     void save_playback_history_entry(int current_second);
     void save_current_playback_progress(bool force = false);
-    void restore_playback_progress(const QString &path);
+    void restore_playback_progress(const QString &path, bool allow_prompt);
     bool is_video_fullscreen() const;
     void enter_video_fullscreen();
     void exit_video_fullscreen();

@@ -38,6 +38,8 @@ constexpr const char *k_settings_app = "VideoPlayer";
 constexpr int k_resize_border_width = 8;
 constexpr int k_compact_control_bar_width = 1080;
 constexpr int k_playback_history_limit = 100;
+constexpr int k_resume_prompt_minimum_second = 10;
+constexpr int k_resume_prompt_near_end_margin_second = 30;
 constexpr int k_playlist_item_type_role = Qt::UserRole;
 constexpr int k_playlist_id_role = Qt::UserRole + 1;
 constexpr int k_playlist_row_role = Qt::UserRole + 2;
@@ -2032,7 +2034,7 @@ void main_window::save_current_playback_progress(bool force)
     save_playback_history_entry(current_second);
 }
 
-void main_window::restore_playback_progress(const QString &path)
+void main_window::restore_playback_progress(const QString &path, bool allow_prompt)
 {
     if (demuxer_ == nullptr || slider_seek_ == nullptr || lbl_time_ == nullptr)
     {
@@ -2046,9 +2048,42 @@ void main_window::restore_playback_progress(const QString &path)
         return;
     }
 
-    if (duration_ > 1.0 && static_cast<double>(saved_second) >= duration_ - 2.0)
+    if (saved_second < k_resume_prompt_minimum_second)
+    {
+        return;
+    }
+
+    if (duration_ > 1.0 && static_cast<double>(saved_second) >= duration_ - k_resume_prompt_near_end_margin_second)
     {
         settings.setValue(playback_position_key(path), 0);
+        settings.setValue(playback_history_entry_group_key(path) + "/position", 0);
+        return;
+    }
+
+    if (!allow_prompt)
+    {
+        return;
+    }
+
+    QWidget *dialog_parent = this;
+    if (is_video_fullscreen() && video_fullscreen_window_ != nullptr)
+    {
+        dialog_parent = video_fullscreen_window_;
+    }
+
+    QMessageBox prompt_box(dialog_parent);
+    prompt_box.setIcon(QMessageBox::Question);
+    prompt_box.setWindowTitle("继续播放");
+    prompt_box.setText(QString("检测到上次播放到 %1，是否继续播放？").arg(format_time(static_cast<double>(saved_second))));
+    auto *continue_button = prompt_box.addButton("继续播放", QMessageBox::AcceptRole);
+    prompt_box.addButton("从头播放", QMessageBox::RejectRole);
+    prompt_box.setDefaultButton(qobject_cast<QPushButton *>(continue_button));
+    prompt_box.exec();
+
+    if (prompt_box.clickedButton() != continue_button)
+    {
+        settings.setValue(playback_position_key(path), 0);
+        settings.setValue(playback_history_entry_group_key(path) + "/position", 0);
         return;
     }
 
@@ -2200,7 +2235,7 @@ void main_window::open_files_into_playlist(const QString &playlist_id, const QSt
     save_playlist_state();
     if (target_row >= 0)
     {
-        play_playlist_item(target_playlist_id, target_row);
+        play_playlist_item(target_playlist_id, target_row, true);
         if (is_video_fullscreen() && video_fullscreen_window_ != nullptr)
         {
             video_fullscreen_window_->activateWindow();
@@ -2232,7 +2267,7 @@ void main_window::on_toggle_pause()
 {
     if (!playing_)
     {
-        play_playlist_row(playlist_store_.current_row(active_playlist_id()));
+        play_playlist_row(playlist_store_.current_row(active_playlist_id()), true);
         return;
     }
     paused_ = !paused_;
@@ -2460,7 +2495,7 @@ void main_window::on_play_previous()
     const int row = playing_ ? playback_playlist_row() : playlist_store_.current_row(playlist_id);
     if (row > 0)
     {
-        play_playlist_item(playlist_id, row - 1);
+        play_playlist_item(playlist_id, row - 1, false);
     }
 }
 
@@ -2471,7 +2506,7 @@ void main_window::on_play_next()
     const int row = playing_ ? playback_playlist_row() : playlist_store_.current_row(playlist_id);
     if (entry != nullptr && row >= 0 && row + 1 < entry->paths.size())
     {
-        play_playlist_item(playlist_id, row + 1);
+        play_playlist_item(playlist_id, row + 1, false);
     }
 }
 
@@ -2479,7 +2514,7 @@ void main_window::on_playlist_item_activated(QTreeWidgetItem *item, int)
 {
     if (is_playlist_file_item(item))
     {
-        play_playlist_item(playlist_id_for_item(item), playlist_row_for_item(item));
+        play_playlist_item(playlist_id_for_item(item), playlist_row_for_item(item), true);
     }
     else if (is_playlist_item(item))
     {
@@ -2616,7 +2651,7 @@ void main_window::on_update_ui()
     save_current_playback_progress();
 }
 
-void main_window::play_playlist_item(const QString &playlist_id, int row)
+void main_window::play_playlist_item(const QString &playlist_id, int row, bool allow_resume_prompt)
 {
     const playlist_entry *entry = playlist_store_.playlist_by_id(playlist_id);
     if (entry == nullptr || row < 0 || row >= entry->paths.size())
@@ -2648,7 +2683,7 @@ void main_window::play_playlist_item(const QString &playlist_id, int row)
     refresh_playlist_view();
     update_playlist_buttons();
     save_playlist_state();
-    restore_playback_progress(path);
+    restore_playback_progress(path, allow_resume_prompt);
 
     const QString display_name = QFileInfo(path).fileName();
     this->setWindowTitle(display_name + " - 视频播放器");
@@ -2660,7 +2695,7 @@ void main_window::play_playlist_item(const QString &playlist_id, int row)
     set_media_title_text(display_name);
 }
 
-void main_window::play_playlist_row(int row) { play_playlist_item(active_playlist_id(), row); }
+void main_window::play_playlist_row(int row, bool allow_resume_prompt) { play_playlist_item(active_playlist_id(), row, allow_resume_prompt); }
 
 void main_window::update_playlist_buttons()
 {
@@ -2693,7 +2728,7 @@ void main_window::finish_playback()
             if (!entry->paths[next_row].isEmpty())
             {
                 LOG_INFO("playback reached end continuing to next row {}", next_row);
-                play_playlist_item(playlist_id, next_row);
+                play_playlist_item(playlist_id, next_row, false);
                 return;
             }
         }
