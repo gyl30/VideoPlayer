@@ -2267,7 +2267,7 @@ void main_window::on_toggle_pause()
 {
     if (!playing_)
     {
-        play_playlist_row(playlist_store_.current_row(active_playlist_id()), true);
+        play_selected_playlist_item();
         return;
     }
     paused_ = !paused_;
@@ -2406,6 +2406,41 @@ void main_window::rebuild_control_rows(bool compact_mode)
     primary_control_row_layout_->addWidget(btn_video_fullscreen_);
     primary_control_row_layout_->addWidget(btn_playlist_);
     secondary_control_row_widget_->hide();
+}
+
+void main_window::play_selected_playlist_item()
+{
+    if (playlist_view_ != nullptr && playlist_view_->currentItem() != nullptr)
+    {
+        QTreeWidgetItem *current_item = playlist_view_->currentItem();
+        if (is_playlist_file_item(current_item))
+        {
+            play_playlist_item(playlist_id_for_item(current_item), playlist_row_for_item(current_item), true);
+            return;
+        }
+
+        if (is_playlist_item(current_item))
+        {
+            const QString playlist_id = playlist_id_for_item(current_item);
+            const playlist_entry *entry = playlist_store_.playlist_by_id(playlist_id);
+            if (entry != nullptr && !entry->paths.isEmpty())
+            {
+                const int row = entry->current_row >= 0 ? entry->current_row : 0;
+                play_playlist_item(playlist_id, row, true);
+                return;
+            }
+        }
+    }
+
+    const QString playlist_id = active_playlist_id();
+    const playlist_entry *entry = playlist_store_.playlist_by_id(playlist_id);
+    if (entry == nullptr || entry->paths.isEmpty())
+    {
+        return;
+    }
+
+    const int row = entry->current_row >= 0 ? entry->current_row : 0;
+    play_playlist_item(playlist_id, row, true);
 }
 
 void main_window::update_playlist_item_icon(QTreeWidgetItem *item)
