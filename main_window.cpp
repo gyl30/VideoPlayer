@@ -513,7 +513,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     video_widget_->setAcceptDrops(true);
     video_frame_layout_->addWidget(video_widget_, 1);
 
-    media_info_overlay_ = new QFrame(video_widget_);
+    media_info_overlay_ = new QFrame(video_frame_);
     media_info_overlay_->setObjectName("mediaInfoOverlay");
     media_info_overlay_->setAttribute(Qt::WA_TransparentForMouseEvents);
     media_info_overlay_->hide();
@@ -1863,9 +1863,6 @@ void main_window::toggle_media_info_overlay()
 {
     media_info_overlay_enabled_ = !media_info_overlay_enabled_;
     update_media_info_overlay();
-
-    QWidget *tooltip_parent = is_video_fullscreen() && video_fullscreen_window_ != nullptr ? video_fullscreen_window_ : this;
-    QToolTip::showText(QCursor::pos(), media_info_overlay_enabled_ ? "已显示媒体信息" : "已隐藏媒体信息", tooltip_parent);
 }
 
 void main_window::update_media_info_overlay()
@@ -1982,10 +1979,16 @@ void main_window::update_media_info_overlay_geometry()
         return;
     }
 
-    const int max_width = qMin(420, qMax(220, video_widget_->width() - 24));
+    QWidget *overlay_parent = media_info_overlay_->parentWidget();
+    if (overlay_parent == nullptr)
+    {
+        return;
+    }
+
+    const int max_width = qMin(420, qMax(220, overlay_parent->width()));
     media_info_overlay_->setFixedWidth(max_width);
     media_info_overlay_->adjustSize();
-    media_info_overlay_->move(12, 12);
+    media_info_overlay_->move(0, 0);
 }
 
 void main_window::show_shortcuts_help()
@@ -2808,6 +2811,10 @@ void main_window::enter_video_fullscreen()
 
     video_fullscreen_window_->setWindowTitle(this->windowTitle());
     video_fullscreen_window_->setWindowIcon(this->windowIcon());
+    if (media_info_overlay_ != nullptr)
+    {
+        media_info_overlay_->setParent(video_fullscreen_window_);
+    }
     video_frame_layout_->removeWidget(video_widget_);
     video_widget_->setParent(video_fullscreen_window_);
     video_fullscreen_layout_->addWidget(video_widget_, 1);
@@ -2831,6 +2838,10 @@ void main_window::exit_video_fullscreen()
     }
 
     video_fullscreen_layout_->removeWidget(video_widget_);
+    if (media_info_overlay_ != nullptr)
+    {
+        media_info_overlay_->setParent(video_frame_);
+    }
     video_widget_->setParent(video_frame_);
     video_frame_layout_->addWidget(video_widget_, 1);
     video_widget_->show();
