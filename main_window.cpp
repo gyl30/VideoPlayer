@@ -176,6 +176,20 @@ QString format_frame_rate_text(AVRational frame_rate)
     return text;
 }
 
+int codec_parameters_channels(const AVCodecParameters *codec_par)
+{
+    if (codec_par == nullptr)
+    {
+        return 0;
+    }
+
+#if LIBAVCODEC_VERSION_MAJOR >= 59
+    return codec_par->ch_layout.nb_channels;
+#else
+    return codec_par->channels;
+#endif
+}
+
 QString media_file_dialog_filter()
 {
     return QStringLiteral(
@@ -1930,9 +1944,10 @@ void main_window::update_media_info_overlay()
             {
                 audio_parts.append(QString("%1 Hz").arg(audio_par->sample_rate));
             }
-            if (audio_par->channels > 0)
+            const int channels = codec_parameters_channels(audio_par);
+            if (channels > 0)
             {
-                audio_parts.append(QString("%1 声道").arg(audio_par->channels));
+                audio_parts.append(QString("%1 声道").arg(channels));
             }
 
             lines.append(QString("<span style=\"color:#8ecfff;\">音频</span> %1").arg(audio_parts.join(" · ").toHtmlEscaped()));
