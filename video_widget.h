@@ -17,6 +17,8 @@ extern "C"
 #include "libavutil/pixdesc.h"
 }
 
+class QString;
+
 class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
 {
     Q_OBJECT
@@ -27,6 +29,8 @@ class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
 
    public:
     void clear();
+    [[nodiscard]] bool has_frame() const;
+    [[nodiscard]] bool save_current_frame(const QString &path) const;
 
    public slots:
     void on_frame_ready(std::shared_ptr<media_frame> frame);

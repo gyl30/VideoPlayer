@@ -1,9 +1,11 @@
 #include <algorithm>
+#include <QImage>
 #include "log.h"
 #include "video_widget.h"
 
 extern "C"
 {
+#include <libswscale/swscale.h>
 #include <libavutil/mathematics.h>
 #include <libavutil/rational.h>
 }
@@ -96,6 +98,60 @@ void video_widget::clear()
 {
     current_frame_ = nullptr;
     update();
+}
+
+bool video_widget::has_frame() const { return current_frame_ != nullptr && current_frame_->raw() != nullptr; }
+
+bool video_widget::save_current_frame(const QString &path) const
+{
+    if (path.isEmpty() || current_frame_ == nullptr || current_frame_->raw() == nullptr)
+    {
+        return false;
+    }
+
+    const AVFrame *raw = current_frame_->raw();
+    if (raw->format != AV_PIX_FMT_YUV420P || raw->width <= 0 || raw->height <= 0)
+    {
+        return false;
+    }
+
+    QImage image(raw->width, raw->height, QImage::Format_RGBA8888);
+    if (image.isNull())
+    {
+        return false;
+    }
+
+    SwsContext *sws_ctx = sws_getContext(raw->width,
+                                         raw->height,
+                                         static_cast<AVPixelFormat>(raw->format),
+                                         raw->width,
+                                         raw->height,
+                                         AV_PIX_FMT_RGBA,
+                                         SWS_BILINEAR,
+                                         nullptr,
+                                         nullptr,
+                                         nullptr);
+    if (sws_ctx == nullptr)
+    {
+        return false;
+    }
+
+    uint8_t *dst_data[4] = {image.bits(), nullptr, nullptr, nullptr};
+    int dst_linesize[4] = {static_cast<int>(image.bytesPerLine()), 0, 0, 0};
+    sws_scale(sws_ctx, raw->data, raw->linesize, 0, raw->height, dst_data, dst_linesize);
+    sws_freeContext(sws_ctx);
+
+    QImage output = image;
+    if (av_cmp_q(raw->sample_aspect_ratio, av_make_q(0, 1)) > 0 && av_cmp_q(raw->sample_aspect_ratio, av_make_q(1, 1)) != 0)
+    {
+        const int target_width = std::max(1, static_cast<int>(std::lround(static_cast<double>(raw->width) * av_q2d(raw->sample_aspect_ratio))));
+        if (target_width != output.width())
+        {
+            output = output.scaled(target_width, output.height(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        }
+    }
+
+    return output.save(path, "PNG");
 }
 
 void video_widget::on_frame_ready(std::shared_ptr<media_frame> frame)
