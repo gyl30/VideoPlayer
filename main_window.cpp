@@ -477,8 +477,8 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     control_row->addWidget(volume_meter_);
     control_row->addSpacing(12);
     control_row->addWidget(btn_open_media_);
-    control_row->addWidget(btn_playlist_);
     control_row->addWidget(btn_video_fullscreen_);
+    control_row->addWidget(btn_playlist_);
 
     control_layout->addWidget(control_bar, 1);
 
