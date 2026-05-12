@@ -2093,12 +2093,12 @@ void main_window::show_shortcuts_help()
 
     auto *body = new QWidget(&dialog);
     auto *body_layout = new QVBoxLayout(body);
-    body_layout->setContentsMargins(16, 16, 16, 16);
-    body_layout->setSpacing(12);
+    body_layout->setContentsMargins(0, 0, 0, 0);
+    body_layout->setSpacing(0);
 
     auto *table = new QTableWidget(11, 2, body);
-    table->setHorizontalHeaderLabels(QStringList{"快捷键", "功能"});
     table->verticalHeader()->setVisible(false);
+    table->horizontalHeader()->setVisible(false);
     table->horizontalHeader()->setStretchLastSection(true);
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -2135,7 +2135,7 @@ void main_window::show_shortcuts_help()
 
     auto *button_row = new QWidget(body);
     auto *button_layout = new QHBoxLayout(button_row);
-    button_layout->setContentsMargins(0, 0, 0, 0);
+    button_layout->setContentsMargins(16, 12, 16, 16);
     button_layout->setSpacing(0);
 
     auto *btn_ok = new QPushButton("关闭", button_row);
