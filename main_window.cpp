@@ -649,7 +649,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     lbl_time_ = new QLabel("00:00:00 / 00:00:00", this);
     lbl_time_->setObjectName("timeLabel");
     lbl_time_->setMinimumWidth(210);
-    lbl_time_->setAlignment(Qt::AlignCenter);
+    lbl_time_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     btn_stop_ = new QPushButton(QIcon(":/icons/stop.svg"), QString(), this);
     btn_stop_->setObjectName("controlButton");
@@ -3303,20 +3303,20 @@ void main_window::rebuild_control_rows(int layout_mode)
     secondary_control_row_layout_->setSpacing(8);
     tertiary_control_row_layout_->setSpacing(8);
     lbl_time_->setMinimumWidth(190);
-    lbl_time_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    lbl_time_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     set_button_sizes(QSize(44, 46), 46, QSize(56, 48), 22);
 
-    primary_control_row_layout_->addWidget(lbl_time_, 1);
+    primary_control_row_layout_->addWidget(lbl_time_);
+    primary_control_row_layout_->addStretch(1);
     primary_control_row_layout_->addWidget(btn_stop_);
     primary_control_row_layout_->addWidget(btn_backward_);
     primary_control_row_layout_->addWidget(btn_play_pause_);
     primary_control_row_layout_->addWidget(btn_forward_);
     primary_control_row_layout_->addWidget(btn_audio_only_);
-    primary_control_row_layout_->addSpacing(8);
+    primary_control_row_layout_->addStretch(1);
     primary_control_row_layout_->addWidget(btn_playback_rate_);
     primary_control_row_layout_->addWidget(lbl_vol_icon_low_);
     primary_control_row_layout_->addWidget(volume_meter_);
-    primary_control_row_layout_->addSpacing(8);
     primary_control_row_layout_->addWidget(btn_open_media_);
     primary_control_row_layout_->addWidget(btn_video_fullscreen_);
     primary_control_row_layout_->addWidget(btn_playlist_);
