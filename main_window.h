@@ -12,6 +12,7 @@
 #include <QFrame>
 #include <QTreeWidget>
 #include <QTimer>
+#include <QScrollBar>
 #include <QEvent>
 #include <QKeyEvent>
 #include <QPoint>
@@ -78,6 +79,10 @@ class main_window : public QMainWindow
     void update_title_maximize_button();
     void update_fullscreen_button();
     void update_screenshot_button();
+    void set_playlist_scrollbar_visible(bool visible);
+    void schedule_hide_playlist_scrollbar();
+    bool is_cursor_in_playlist_panel() const;
+    bool is_playlist_region_object(const QObject *watched) const;
     void play_playlist_item(const QString &playlist_id, int row);
     void play_playlist_row(int row);
     void update_playlist_buttons();
@@ -156,9 +161,11 @@ class main_window : public QMainWindow
 
     QTimer *ui_timer_ = nullptr;
     QTimer *title_scroll_timer_ = nullptr;
+    QTimer *playlist_scrollbar_hide_timer_ = nullptr;
 
     bool dragging_title_bar_ = false;
     bool closing_ = false;
+    bool playlist_scrollbar_visible_ = false;
     QPoint drag_start_global_pos_;
     QPoint drag_start_window_pos_;
     int drag_press_window_x_ = 0;

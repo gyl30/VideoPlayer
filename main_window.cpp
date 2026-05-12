@@ -543,6 +543,21 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     update_playlist_buttons();
     update_playlist_header_buttons();
 
+    playlist_scrollbar_hide_timer_ = new QTimer(this);
+    playlist_scrollbar_hide_timer_->setSingleShot(true);
+    playlist_scrollbar_hide_timer_->setInterval(1200);
+    connect(playlist_scrollbar_hide_timer_,
+            &QTimer::timeout,
+            this,
+            [this]()
+            {
+                if (!is_cursor_in_playlist_panel())
+                {
+                    set_playlist_scrollbar_visible(false);
+                }
+            });
+    set_playlist_scrollbar_visible(false);
+
     setMouseTracking(true);
     installEventFilter(this);
     for (auto *widget : findChildren<QWidget *>())
@@ -1048,6 +1063,22 @@ bool main_window::eventFilter(QObject *watched, QEvent *event)
         }
     }
 
+    if (is_playlist_region_object(watched))
+    {
+        if (event->type() == QEvent::Enter || event->type() == QEvent::MouseMove)
+        {
+            if (playlist_scrollbar_hide_timer_ != nullptr)
+            {
+                playlist_scrollbar_hide_timer_->stop();
+            }
+            set_playlist_scrollbar_visible(true);
+        }
+        else if (event->type() == QEvent::Leave)
+        {
+            schedule_hide_playlist_scrollbar();
+        }
+    }
+
     if (watched == video_fullscreen_window_)
     {
         if (event->type() == QEvent::KeyPress)
@@ -1309,6 +1340,66 @@ void main_window::update_screenshot_button()
     }
 }
 
+void main_window::set_playlist_scrollbar_visible(bool visible)
+{
+    playlist_scrollbar_visible_ = visible;
+    if (playlist_view_ == nullptr || playlist_panel_ == nullptr)
+    {
+        return;
+    }
+
+    QScrollBar *scrollbar = playlist_view_->verticalScrollBar();
+    if (scrollbar == nullptr)
+    {
+        return;
+    }
+
+    const bool should_show = visible && playlist_panel_->isVisible() && scrollbar->maximum() > 0;
+    scrollbar->setVisible(should_show);
+}
+
+void main_window::schedule_hide_playlist_scrollbar()
+{
+    if (playlist_scrollbar_hide_timer_ == nullptr || !playlist_panel_->isVisible())
+    {
+        return;
+    }
+
+    if (is_cursor_in_playlist_panel())
+    {
+        return;
+    }
+
+    playlist_scrollbar_hide_timer_->start();
+}
+
+bool main_window::is_cursor_in_playlist_panel() const
+{
+    if (playlist_panel_ == nullptr || !playlist_panel_->isVisible())
+    {
+        return false;
+    }
+
+    const QPoint local_pos = playlist_panel_->mapFromGlobal(QCursor::pos());
+    return playlist_panel_->rect().contains(local_pos);
+}
+
+bool main_window::is_playlist_region_object(const QObject *watched) const
+{
+    if (playlist_panel_ == nullptr || watched == nullptr)
+    {
+        return false;
+    }
+
+    if (watched == playlist_panel_)
+    {
+        return true;
+    }
+
+    const auto *widget = qobject_cast<const QWidget *>(watched);
+    return widget != nullptr && playlist_panel_->isAncestorOf(const_cast<QWidget *>(widget));
+}
+
 void main_window::update_playback_rate_button()
 {
     if (btn_playback_rate_ != nullptr)
@@ -1489,6 +1580,7 @@ void main_window::refresh_playlist_view()
         playlist_view_->setCurrentItem(current_item);
     }
 
+    set_playlist_scrollbar_visible(playlist_scrollbar_visible_ && is_cursor_in_playlist_panel());
     update_playlist_header_buttons();
 }
 
@@ -1958,6 +2050,18 @@ void main_window::on_toggle_playlist()
 {
     const bool visible = playlist_panel_->isVisible();
     playlist_panel_->setVisible(!visible);
+    if (visible)
+    {
+        if (playlist_scrollbar_hide_timer_ != nullptr)
+        {
+            playlist_scrollbar_hide_timer_->stop();
+        }
+        set_playlist_scrollbar_visible(false);
+    }
+    else
+    {
+        set_playlist_scrollbar_visible(is_cursor_in_playlist_panel());
+    }
     update_playlist_buttons();
 }
 
