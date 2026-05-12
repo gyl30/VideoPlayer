@@ -1,10 +1,13 @@
 #include "playlist_name_dialog.h"
 
 #include <QHBoxLayout>
+#include <QGuiApplication>
+#include <QInputMethod>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QShowEvent>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -80,7 +83,6 @@ playlist_name_dialog::playlist_name_dialog(const QString &title,
     setup_ui(title, label_text, accept_text);
     line_edit_->setText(initial_text);
     line_edit_->selectAll();
-    line_edit_->setFocus();
 }
 
 QString playlist_name_dialog::text() const
@@ -108,6 +110,22 @@ void playlist_name_dialog::showEvent(QShowEvent *event)
 {
     QDialog::showEvent(event);
     center_to_parent();
+    QTimer::singleShot(
+        0,
+        this,
+        [this]()
+        {
+            if (line_edit_ == nullptr)
+            {
+                return;
+            }
+
+            activateWindow();
+            raise();
+            line_edit_->setFocus(Qt::OtherFocusReason);
+            line_edit_->selectAll();
+            QGuiApplication::inputMethod()->reset();
+        });
 }
 
 void playlist_name_dialog::setup_ui(const QString &title, const QString &label_text, const QString &accept_text)
@@ -146,6 +164,7 @@ void playlist_name_dialog::setup_ui(const QString &title, const QString &label_t
     label->setObjectName("dialogLabel");
 
     line_edit_ = new QLineEdit(body);
+    line_edit_->setAttribute(Qt::WA_InputMethodEnabled, true);
 
     auto *button_row = new QWidget(body);
     auto *button_layout = new QHBoxLayout(button_row);
