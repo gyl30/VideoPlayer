@@ -3,7 +3,6 @@
 #include <QHBoxLayout>
 #include <QGuiApplication>
 #include <QInputMethod>
-#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -98,13 +97,13 @@ QString playlist_name_dialog::get_text(QWidget *parent,
                                        const QString &initial_text,
                                        bool *accepted)
 {
-    bool result = false;
-    const QString text = QInputDialog::getText(parent, title, label_text, QLineEdit::Normal, initial_text, &result);
+    playlist_name_dialog dialog(title, label_text, accept_text, initial_text, parent);
+    const bool result = dialog.exec() == QDialog::Accepted;
     if (accepted != nullptr)
     {
         *accepted = result;
     }
-    return result ? text : QString();
+    return result ? dialog.text() : QString();
 }
 
 void playlist_name_dialog::showEvent(QShowEvent *event)
