@@ -40,6 +40,7 @@ constexpr const char *k_settings_org = "gyl30";
 constexpr const char *k_settings_app = "VideoPlayer";
 constexpr int k_resize_border_width = 8;
 constexpr int k_compact_control_bar_width = 1080;
+constexpr int k_narrow_control_bar_width = 900;
 constexpr int k_playback_history_limit = 100;
 constexpr int k_resume_prompt_minimum_second = 10;
 constexpr int k_resume_prompt_near_end_margin_second = 30;
@@ -601,8 +602,14 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     secondary_control_row_layout_->setContentsMargins(0, 0, 0, 0);
     secondary_control_row_layout_->setSpacing(8);
 
+    tertiary_control_row_widget_ = new QWidget(control_bar);
+    tertiary_control_row_layout_ = new QHBoxLayout(tertiary_control_row_widget_);
+    tertiary_control_row_layout_->setContentsMargins(0, 0, 0, 0);
+    tertiary_control_row_layout_->setSpacing(8);
+
     control_bar_layout->addWidget(primary_control_row_widget_);
     control_bar_layout->addWidget(secondary_control_row_widget_);
+    control_bar_layout->addWidget(tertiary_control_row_widget_);
 
     lbl_time_ = new QLabel("00:00:00 / 00:00:00", this);
     lbl_time_->setObjectName("timeLabel");
@@ -2677,25 +2684,34 @@ void main_window::update_playlist_header_buttons()
 
 void main_window::update_control_layout_mode()
 {
-    const bool compact_mode = width() < k_compact_control_bar_width;
-    if (primary_control_row_layout_ == nullptr || secondary_control_row_layout_ == nullptr)
+    int layout_mode = 0;
+    if (width() < k_narrow_control_bar_width)
+    {
+        layout_mode = 2;
+    }
+    else if (width() < k_compact_control_bar_width)
+    {
+        layout_mode = 1;
+    }
+
+    if (primary_control_row_layout_ == nullptr || secondary_control_row_layout_ == nullptr || tertiary_control_row_layout_ == nullptr)
     {
         return;
     }
 
-    if (compact_control_layout_ == compact_mode && primary_control_row_layout_->count() > 0)
+    if (control_layout_mode_ == layout_mode && primary_control_row_layout_->count() > 0)
     {
         return;
     }
 
-    compact_control_layout_ = compact_mode;
-    rebuild_control_rows(compact_mode);
+    control_layout_mode_ = layout_mode;
+    rebuild_control_rows(layout_mode);
 }
 
-void main_window::rebuild_control_rows(bool compact_mode)
+void main_window::rebuild_control_rows(int layout_mode)
 {
     if (primary_control_row_layout_ == nullptr || secondary_control_row_layout_ == nullptr || secondary_control_row_widget_ == nullptr ||
-        control_panel_ == nullptr || lbl_time_ == nullptr)
+        tertiary_control_row_layout_ == nullptr || tertiary_control_row_widget_ == nullptr || control_panel_ == nullptr || lbl_time_ == nullptr)
     {
         return;
     }
@@ -2708,11 +2724,47 @@ void main_window::rebuild_control_rows(bool compact_mode)
     {
         delete secondary_control_row_layout_->takeAt(0);
     }
+    while (tertiary_control_row_layout_->count() > 0)
+    {
+        delete tertiary_control_row_layout_->takeAt(0);
+    }
 
-    if (compact_mode)
+    if (layout_mode == 2)
+    {
+        control_panel_->setFixedHeight(182);
+        lbl_time_->setMinimumWidth(0);
+
+        primary_control_row_layout_->addStretch(1);
+        primary_control_row_layout_->addWidget(btn_stop_);
+        primary_control_row_layout_->addWidget(btn_backward_);
+        primary_control_row_layout_->addWidget(btn_play_pause_);
+        primary_control_row_layout_->addWidget(btn_forward_);
+        primary_control_row_layout_->addStretch(1);
+
+        secondary_control_row_layout_->addWidget(lbl_time_, 1);
+        secondary_control_row_layout_->addSpacing(8);
+        secondary_control_row_layout_->addWidget(btn_sequential_playback_);
+        secondary_control_row_layout_->addWidget(btn_audio_only_);
+
+        tertiary_control_row_layout_->addWidget(btn_playback_rate_);
+        tertiary_control_row_layout_->addWidget(btn_recent_history_);
+        tertiary_control_row_layout_->addWidget(lbl_vol_icon_low_);
+        tertiary_control_row_layout_->addWidget(volume_meter_);
+        tertiary_control_row_layout_->addStretch(1);
+        tertiary_control_row_layout_->addWidget(btn_open_media_);
+        tertiary_control_row_layout_->addWidget(btn_screenshot_);
+        tertiary_control_row_layout_->addWidget(btn_video_fullscreen_);
+        tertiary_control_row_layout_->addWidget(btn_playlist_);
+
+        secondary_control_row_widget_->show();
+        tertiary_control_row_widget_->show();
+        return;
+    }
+
+    if (layout_mode == 1)
     {
         control_panel_->setFixedHeight(140);
-        lbl_time_->setMinimumWidth(210);
+        lbl_time_->setMinimumWidth(180);
 
         primary_control_row_layout_->addStretch(1);
         primary_control_row_layout_->addWidget(btn_stop_);
@@ -2735,6 +2787,7 @@ void main_window::rebuild_control_rows(bool compact_mode)
         secondary_control_row_layout_->addWidget(btn_video_fullscreen_);
         secondary_control_row_layout_->addWidget(btn_playlist_);
         secondary_control_row_widget_->show();
+        tertiary_control_row_widget_->hide();
         return;
     }
 
@@ -2760,6 +2813,7 @@ void main_window::rebuild_control_rows(bool compact_mode)
     primary_control_row_layout_->addWidget(btn_video_fullscreen_);
     primary_control_row_layout_->addWidget(btn_playlist_);
     secondary_control_row_widget_->hide();
+    tertiary_control_row_widget_->hide();
 }
 
 void main_window::play_selected_playlist_item()
