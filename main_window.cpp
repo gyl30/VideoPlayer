@@ -42,8 +42,6 @@ namespace
 constexpr const char *k_settings_org = "gyl30";
 constexpr const char *k_settings_app = "VideoPlayer";
 constexpr int k_resize_border_width = 8;
-constexpr int k_compact_control_bar_width = 1000;
-constexpr int k_narrow_control_bar_width = 900;
 constexpr int k_playback_history_limit = 100;
 constexpr int k_resume_prompt_minimum_second = 10;
 constexpr int k_resume_prompt_near_end_margin_second = 30;
@@ -410,7 +408,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     this->setWindowFlags(Qt::FramelessWindowHint | Qt::Window);
     this->setWindowTitle("视频播放器");
     this->resize(1080, 680);
-    this->setMinimumSize(760, 480);
+    this->setMinimumSize(960, 480);
     this->setFocusPolicy(Qt::StrongFocus);
 
     auto *central_widget = new QWidget(this);
@@ -626,7 +624,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     control_bar->setObjectName("controlBar");
 
     auto *control_bar_layout = new QVBoxLayout(control_bar);
-    control_bar_layout->setContentsMargins(20, 5, 20, 6);
+    control_bar_layout->setContentsMargins(16, 5, 16, 6);
     control_bar_layout->setSpacing(6);
 
     primary_control_row_widget_ = new QWidget(control_bar);
@@ -3166,15 +3164,7 @@ void main_window::update_playlist_header_buttons()
 
 void main_window::update_control_layout_mode()
 {
-    int layout_mode = 0;
-    if (width() < k_narrow_control_bar_width)
-    {
-        layout_mode = 2;
-    }
-    else if (width() < k_compact_control_bar_width)
-    {
-        layout_mode = 1;
-    }
+    const int layout_mode = 0;
 
     if (primary_control_row_layout_ == nullptr || secondary_control_row_layout_ == nullptr || tertiary_control_row_layout_ == nullptr)
     {
@@ -3309,23 +3299,24 @@ void main_window::rebuild_control_rows(int layout_mode)
     }
 
     control_panel_->setFixedHeight(104);
-    primary_control_row_layout_->setSpacing(10);
+    primary_control_row_layout_->setSpacing(8);
     secondary_control_row_layout_->setSpacing(8);
     tertiary_control_row_layout_->setSpacing(8);
-    lbl_time_->setMinimumWidth(210);
+    lbl_time_->setMinimumWidth(190);
+    lbl_time_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     set_button_sizes(QSize(44, 46), 46, QSize(56, 48), 22);
 
-    primary_control_row_layout_->addWidget(lbl_time_);
-    primary_control_row_layout_->addStretch(1);
+    primary_control_row_layout_->addWidget(lbl_time_, 1);
     primary_control_row_layout_->addWidget(btn_stop_);
     primary_control_row_layout_->addWidget(btn_backward_);
     primary_control_row_layout_->addWidget(btn_play_pause_);
     primary_control_row_layout_->addWidget(btn_forward_);
     primary_control_row_layout_->addWidget(btn_audio_only_);
-    primary_control_row_layout_->addStretch(1);
+    primary_control_row_layout_->addSpacing(8);
     primary_control_row_layout_->addWidget(btn_playback_rate_);
     primary_control_row_layout_->addWidget(lbl_vol_icon_low_);
     primary_control_row_layout_->addWidget(volume_meter_);
+    primary_control_row_layout_->addSpacing(8);
     primary_control_row_layout_->addWidget(btn_open_media_);
     primary_control_row_layout_->addWidget(btn_video_fullscreen_);
     primary_control_row_layout_->addWidget(btn_playlist_);
