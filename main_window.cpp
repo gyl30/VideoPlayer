@@ -3072,39 +3072,18 @@ void main_window::open_files_into_playlist(const QString &playlist_id)
 void main_window::open_files_into_playlist(const QString &playlist_id, const QStringList &filenames)
 {
     const QString target_playlist_id = playlist_id.isEmpty() ? active_playlist_id() : playlist_id;
-    int target_row = -1;
     for (const QString &filename : filenames)
     {
         const QString normalized_path = normalize_media_path(filename);
         LOG_INFO("open file selected {}", normalized_path.toStdString());
-        int row = playlist_store_.index_of_path(target_playlist_id, normalized_path);
-        if (row < 0 && playlist_store_.add_path(target_playlist_id, normalized_path))
+        if (playlist_store_.index_of_path(target_playlist_id, normalized_path) < 0)
         {
-            const playlist_entry *entry = playlist_store_.playlist_by_id(target_playlist_id);
-            if (entry != nullptr)
-            {
-                row = static_cast<int>(entry->paths.size() - 1);
-            }
-        }
-
-        if (target_row < 0)
-        {
-            target_row = row;
+            playlist_store_.add_path(target_playlist_id, normalized_path);
         }
     }
 
     refresh_playlist_view();
     save_playlist_state();
-    if (target_row >= 0)
-    {
-        play_playlist_item(target_playlist_id, target_row, true);
-        if (is_video_fullscreen() && video_fullscreen_window_ != nullptr)
-        {
-            video_fullscreen_window_->activateWindow();
-            video_fullscreen_window_->raise();
-            video_fullscreen_window_->setFocus();
-        }
-    }
 }
 
 void main_window::on_create_playlist()
