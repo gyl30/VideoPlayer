@@ -34,6 +34,7 @@
 #include "playlist_store.h"
 
 class QMenu;
+class QWidget;
 
 class main_window : public QMainWindow
 {
@@ -90,6 +91,7 @@ class main_window : public QMainWindow
     void finish_playback();
     void update_control_layout_mode();
     void rebuild_control_rows(bool compact_mode);
+    void install_playback_shortcuts(QWidget *target);
     void update_playlist_item_icon(QTreeWidgetItem *item);
     void refresh_playlist_view();
     void set_active_playlist(const QString &playlist_id);

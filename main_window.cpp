@@ -12,6 +12,7 @@
 #include <QMouseEvent>
 #include <QSignalBlocker>
 #include <QSettings>
+#include <QShortcut>
 #include <QSet>
 #include <QCoreApplication>
 #include <QStandardPaths>
@@ -547,6 +548,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     connect(title_scroll_timer_, &QTimer::timeout, this, &main_window::on_title_scroll_tick);
 
     set_media_title_text("视频播放器");
+    install_playback_shortcuts(this);
     restore_persistent_state();
     update_volume_icon(volume_meter_ != nullptr ? volume_meter_->value() : 80);
     update_fullscreen_button();
@@ -1093,47 +1095,6 @@ bool main_window::eventFilter(QObject *watched, QEvent *event)
 
     if (watched == video_fullscreen_window_)
     {
-        if (event->type() == QEvent::KeyPress)
-        {
-            auto *key_event = static_cast<QKeyEvent *>(event);
-            if (key_event->matches(QKeySequence::Open))
-            {
-                LOG_INFO("key open shortcut pressed in video fullscreen");
-                on_open_file();
-                return true;
-            }
-            if (key_event->key() == Qt::Key_F11)
-            {
-                LOG_INFO("key fullscreen shortcut pressed in video fullscreen");
-                on_toggle_fullscreen();
-                return true;
-            }
-            if (key_event->key() == Qt::Key_Left)
-            {
-                LOG_INFO("key left pressed in video fullscreen");
-                do_seek_relative(-15.0);
-                return true;
-            }
-            if (key_event->key() == Qt::Key_Right)
-            {
-                LOG_INFO("key right pressed in video fullscreen");
-                do_seek_relative(15.0);
-                return true;
-            }
-            if (key_event->key() == Qt::Key_Space)
-            {
-                LOG_INFO("key space pressed in video fullscreen");
-                on_toggle_pause();
-                return true;
-            }
-            if (key_event->key() == Qt::Key_Escape)
-            {
-                LOG_INFO("key escape pressed in video fullscreen");
-                on_toggle_fullscreen();
-                return true;
-            }
-        }
-
         if (event->type() == QEvent::Close)
         {
             if (closing_)
@@ -1225,40 +1186,7 @@ void main_window::resizeEvent(QResizeEvent *event)
 
 void main_window::keyPressEvent(QKeyEvent *event)
 {
-    if (event->matches(QKeySequence::Open))
-    {
-        LOG_INFO("key open shortcut pressed");
-        on_open_file();
-    }
-    else if (event->key() == Qt::Key_F11)
-    {
-        LOG_INFO("key fullscreen shortcut pressed");
-        on_toggle_fullscreen();
-    }
-    else if (event->key() == Qt::Key_Left)
-    {
-        LOG_INFO("key left pressed");
-        do_seek_relative(-15.0);
-    }
-    else if (event->key() == Qt::Key_Right)
-    {
-        LOG_INFO("key right pressed");
-        do_seek_relative(15.0);
-    }
-    else if (event->key() == Qt::Key_Space)
-    {
-        LOG_INFO("key space pressed");
-        on_toggle_pause();
-    }
-    else if (event->key() == Qt::Key_Escape && is_video_fullscreen())
-    {
-        LOG_INFO("key escape pressed in fullscreen");
-        on_toggle_fullscreen();
-    }
-    else
-    {
-        QMainWindow::keyPressEvent(event);
-    }
+    QMainWindow::keyPressEvent(event);
 }
 
 void main_window::toggle_window_maximized()
@@ -1288,6 +1216,97 @@ void main_window::update_title_maximize_button()
 
     btn_title_maximize_->setIcon(QIcon(isMaximized() ? ":/icons/title-restore.svg" : ":/icons/title-maximize.svg"));
     btn_title_maximize_->setToolTip(isMaximized() ? "还原" : "最大化");
+}
+
+void main_window::install_playback_shortcuts(QWidget *target)
+{
+    if (target == nullptr || target->property("playbackShortcutsInstalled").toBool())
+    {
+        return;
+    }
+
+    auto install_shortcut =
+        [this, target](const QKeySequence &sequence, const std::function<void()> &handler)
+        {
+            auto *shortcut = new QShortcut(sequence, target);
+            shortcut->setContext(Qt::WidgetWithChildrenShortcut);
+            connect(shortcut,
+                    &QShortcut::activated,
+                    this,
+                    [handler]()
+                    {
+                        handler();
+                    });
+        };
+
+    install_shortcut(QKeySequence::Open,
+                     [this]()
+                     {
+                         LOG_INFO("key open shortcut pressed");
+                         on_open_file();
+                     });
+    install_shortcut(QKeySequence(Qt::Key_F),
+                     [this]()
+                     {
+                         LOG_INFO("key fullscreen shortcut pressed");
+                         on_toggle_fullscreen();
+                     });
+    install_shortcut(QKeySequence(Qt::Key_F11),
+                     [this]()
+                     {
+                         LOG_INFO("key fullscreen shortcut pressed");
+                         on_toggle_fullscreen();
+                     });
+    install_shortcut(QKeySequence(Qt::Key_Left),
+                     [this]()
+                     {
+                         LOG_INFO("key left pressed");
+                         do_seek_relative(-5.0);
+                     });
+    install_shortcut(QKeySequence(Qt::Key_Right),
+                     [this]()
+                     {
+                         LOG_INFO("key right pressed");
+                         do_seek_relative(5.0);
+                     });
+    install_shortcut(QKeySequence(Qt::Key_Space),
+                     [this]()
+                     {
+                         LOG_INFO("key space pressed");
+                         on_toggle_pause();
+                     });
+    install_shortcut(QKeySequence(Qt::Key_Up),
+                     [this]()
+                     {
+                         if (volume_meter_ == nullptr)
+                         {
+                             return;
+                         }
+                         LOG_INFO("key up pressed");
+                         volume_meter_->setValue(qBound(0, volume_meter_->value() + 5, 100));
+                     });
+    install_shortcut(QKeySequence(Qt::Key_Down),
+                     [this]()
+                     {
+                         if (volume_meter_ == nullptr)
+                         {
+                             return;
+                         }
+                         LOG_INFO("key down pressed");
+                         volume_meter_->setValue(qBound(0, volume_meter_->value() - 5, 100));
+                     });
+    install_shortcut(QKeySequence(Qt::Key_Escape),
+                     [this]()
+                     {
+                         if (!is_video_fullscreen())
+                         {
+                             return;
+                         }
+                         LOG_INFO("key escape pressed in fullscreen");
+                         on_toggle_fullscreen();
+                     });
+
+    target->setProperty("playbackShortcutsInstalled", true);
 }
 
 void main_window::update_fullscreen_button()
@@ -1874,6 +1893,7 @@ void main_window::enter_video_fullscreen()
         video_fullscreen_window_->setFocusPolicy(Qt::StrongFocus);
         video_fullscreen_window_->setStyleSheet("background: #000000;");
         video_fullscreen_window_->installEventFilter(this);
+        install_playback_shortcuts(video_fullscreen_window_);
 
         video_fullscreen_layout_ = new QVBoxLayout(video_fullscreen_window_);
         video_fullscreen_layout_->setContentsMargins(0, 0, 0, 0);
