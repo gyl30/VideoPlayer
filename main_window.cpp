@@ -2075,28 +2075,6 @@ void main_window::restore_playback_progress(const QString &path, bool allow_prom
         return;
     }
 
-    QWidget *dialog_parent = this;
-    if (is_video_fullscreen() && video_fullscreen_window_ != nullptr)
-    {
-        dialog_parent = video_fullscreen_window_;
-    }
-
-    QMessageBox prompt_box(dialog_parent);
-    prompt_box.setIcon(QMessageBox::Question);
-    prompt_box.setWindowTitle("继续播放");
-    prompt_box.setText(QString("检测到上次播放到 %1，是否继续播放？").arg(format_time(static_cast<double>(saved_second))));
-    auto *continue_button = prompt_box.addButton("继续播放", QMessageBox::AcceptRole);
-    prompt_box.addButton("从头播放", QMessageBox::RejectRole);
-    prompt_box.setDefaultButton(qobject_cast<QPushButton *>(continue_button));
-    prompt_box.exec();
-
-    if (prompt_box.clickedButton() != continue_button)
-    {
-        settings.setValue(playback_position_key(path), 0);
-        settings.setValue(playback_history_entry_group_key(path) + "/position", 0);
-        return;
-    }
-
     LOG_INFO("restoring playback progress path {} second {}", path.toStdString(), saved_second);
     last_saved_progress_second_ = saved_second;
     slider_seek_->setValue(saved_second);
