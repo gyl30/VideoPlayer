@@ -36,6 +36,20 @@ double normalize_playback_rate(double rate)
     }
     return rate;
 }
+
+int frame_channels_compat(const AVFrame *frame)
+{
+    if (frame == nullptr)
+    {
+        return 0;
+    }
+
+#if LIBAVUTIL_VERSION_MAJOR >= 57
+    return frame->ch_layout.nb_channels;
+#else
+    return frame->channels;
+#endif
+}
 }  // namespace
 
 sdl_audio_backend::~sdl_audio_backend()
@@ -505,7 +519,7 @@ bool sdl_audio_backend::configure_filter_graph(const AVFrame *frame, double play
     audio_channel_layout src_layout = frame->ch_layout;
     if (src_layout.nb_channels == 0)
     {
-        av_channel_layout_default(&src_layout, frame->channels);
+        av_channel_layout_default(&src_layout, frame_channels_compat(frame));
     }
     char layout_desc[128] = {0};
     if (av_channel_layout_describe(&src_layout, layout_desc, sizeof(layout_desc)) < 0)
@@ -516,7 +530,7 @@ bool sdl_audio_backend::configure_filter_graph(const AVFrame *frame, double play
     }
 #else
     const audio_channel_layout src_layout =
-        frame->channel_layout != 0 ? frame->channel_layout : static_cast<uint64_t>(av_get_default_channel_layout(frame->channels));
+        frame->channel_layout != 0 ? frame->channel_layout : static_cast<uint64_t>(av_get_default_channel_layout(frame_channels_compat(frame)));
     char layout_desc[64] = {0};
     std::snprintf(layout_desc, sizeof(layout_desc), "0x%llx", static_cast<long long>(src_layout));
 #endif
@@ -662,14 +676,14 @@ bool sdl_audio_backend::filter_matches_frame(const AVFrame *frame) const
     audio_channel_layout frame_layout = frame->ch_layout;
     if (frame_layout.nb_channels == 0)
     {
-        av_channel_layout_default(&frame_layout, frame->channels);
+        av_channel_layout_default(&frame_layout, frame_channels_compat(frame));
     }
     const bool same_layout = av_channel_layout_compare(&filter_src_layout_, &frame_layout) == 0;
     av_channel_layout_uninit(&frame_layout);
     return same_layout;
 #else
     const audio_channel_layout frame_layout =
-        frame->channel_layout != 0 ? frame->channel_layout : static_cast<uint64_t>(av_get_default_channel_layout(frame->channels));
+        frame->channel_layout != 0 ? frame->channel_layout : static_cast<uint64_t>(av_get_default_channel_layout(frame_channels_compat(frame)));
     return filter_src_layout_ == frame_layout;
 #endif
 }
