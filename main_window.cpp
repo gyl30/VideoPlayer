@@ -1533,15 +1533,23 @@ void main_window::refresh_playlist_view()
 
     const QString active_id = active_playlist_id();
     const bool has_playing_item = playing_ && !current_playback_playlist_id_.isEmpty() && current_playback_row_ >= 0;
+    const QIcon playlist_icon(":/icons/playlist.svg");
+    const QIcon media_file_icon(":/icons/open-media.svg");
     const QIcon playing_icon(":/icons/play.svg");
+    const QBrush playlist_brush(QColor("#eef8ff"));
     const QBrush playing_brush(QColor("#83d7ff"));
     QTreeWidgetItem *current_item = nullptr;
     for (const playlist_entry &entry : playlist_store_.playlists())
     {
         auto *playlist_item = new QTreeWidgetItem(playlist_view_);
         playlist_item->setText(0, entry.name);
+        playlist_item->setIcon(0, playlist_icon);
         playlist_item->setData(0, k_playlist_item_type_role, k_playlist_type);
         playlist_item->setData(0, k_playlist_id_role, entry.id);
+        QFont playlist_font = playlist_item->font(0);
+        playlist_font.setBold(true);
+        playlist_item->setFont(0, playlist_font);
+        playlist_item->setForeground(0, playlist_brush);
         playlist_item->setExpanded(true);
 
         for (int row = 0; row < entry.paths.size(); ++row)
@@ -1549,6 +1557,7 @@ void main_window::refresh_playlist_view()
             const QString &path = entry.paths[row];
             auto *file_item = new QTreeWidgetItem(playlist_item);
             file_item->setText(0, QFileInfo(path).fileName());
+            file_item->setIcon(0, media_file_icon);
             file_item->setData(0, k_playlist_item_type_role, k_playlist_file_type);
             file_item->setData(0, k_playlist_id_role, entry.id);
             file_item->setData(0, k_playlist_row_role, row);
