@@ -90,6 +90,7 @@ class main_window : public QMainWindow
     void finish_playback();
     void update_control_layout_mode();
     void rebuild_control_rows(bool compact_mode);
+    void update_playlist_item_icon(QTreeWidgetItem *item);
     void refresh_playlist_view();
     void set_active_playlist(const QString &playlist_id);
     QString active_playlist_id() const;

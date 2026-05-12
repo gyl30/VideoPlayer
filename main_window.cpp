@@ -12,6 +12,7 @@
 #include <QMouseEvent>
 #include <QSignalBlocker>
 #include <QSettings>
+#include <QSet>
 #include <QCoreApplication>
 #include <QStandardPaths>
 #include <QStyle>
@@ -517,6 +518,20 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     connect(btn_playlist_create_, &QPushButton::clicked, this, &main_window::on_create_playlist);
     connect(btn_playlist_manage_, &QPushButton::clicked, this, [this]() { open_playlist_management_dialog(); });
     connect(playlist_view_, &QTreeWidget::itemDoubleClicked, this, &main_window::on_playlist_item_activated);
+    connect(playlist_view_,
+            &QTreeWidget::itemExpanded,
+            this,
+            [this](QTreeWidgetItem *item)
+            {
+                update_playlist_item_icon(item);
+            });
+    connect(playlist_view_,
+            &QTreeWidget::itemCollapsed,
+            this,
+            [this](QTreeWidgetItem *item)
+            {
+                update_playlist_item_icon(item);
+            });
 
     connect(volume_meter_, &volume_meter::value_changed, this, &main_window::on_volume_changed);
     connect(btn_title_minimize_, &QPushButton::clicked, this, &QWidget::showMinimized);
@@ -1526,12 +1541,21 @@ void main_window::refresh_playlist_view()
         return;
     }
 
+    QSet<QString> collapsed_playlist_ids;
+    for (int i = 0; i < playlist_view_->topLevelItemCount(); ++i)
+    {
+        QTreeWidgetItem *item = playlist_view_->topLevelItem(i);
+        if (is_playlist_item(item) && !item->isExpanded())
+        {
+            collapsed_playlist_ids.insert(playlist_id_for_item(item));
+        }
+    }
+
     QSignalBlocker blocker(playlist_view_);
     playlist_view_->clear();
 
     const QString active_id = active_playlist_id();
     const bool has_playing_item = playing_ && !current_playback_playlist_id_.isEmpty() && current_playback_row_ >= 0;
-    const QIcon playlist_icon(":/icons/playlist.svg");
     const QIcon media_file_icon(":/icons/open-media.svg");
     const QIcon playing_icon(":/icons/play.svg");
     const QBrush playlist_brush(QColor("#eef8ff"));
@@ -1541,14 +1565,14 @@ void main_window::refresh_playlist_view()
     {
         auto *playlist_item = new QTreeWidgetItem(playlist_view_);
         playlist_item->setText(0, entry.name);
-        playlist_item->setIcon(0, playlist_icon);
         playlist_item->setData(0, k_playlist_item_type_role, k_playlist_type);
         playlist_item->setData(0, k_playlist_id_role, entry.id);
         QFont playlist_font = playlist_item->font(0);
         playlist_font.setBold(true);
         playlist_item->setFont(0, playlist_font);
         playlist_item->setForeground(0, playlist_brush);
-        playlist_item->setExpanded(true);
+        playlist_item->setExpanded(!collapsed_playlist_ids.contains(entry.id));
+        update_playlist_item_icon(playlist_item);
 
         for (int row = 0; row < entry.paths.size(); ++row)
         {
@@ -2136,6 +2160,18 @@ void main_window::rebuild_control_rows(bool compact_mode)
     primary_control_row_layout_->addWidget(btn_video_fullscreen_);
     primary_control_row_layout_->addWidget(btn_playlist_);
     secondary_control_row_widget_->hide();
+}
+
+void main_window::update_playlist_item_icon(QTreeWidgetItem *item)
+{
+    if (!is_playlist_item(item))
+    {
+        return;
+    }
+
+    static const QIcon collapsed_icon(":/icons/playlist-folder.svg");
+    static const QIcon expanded_icon(":/icons/playlist-folder-open.svg");
+    item->setIcon(0, item->isExpanded() ? expanded_icon : collapsed_icon);
 }
 
 void main_window::on_toggle_playlist()

@@ -11,6 +11,8 @@
     <file alias="icons/title-restore.svg">icons/title-restore.svg</file>
     <file alias="icons/title-close.svg">icons/title-close.svg</file>
     <file alias="icons/playlist.svg">icons/playlist.svg</file>
+    <file alias="icons/playlist-folder.svg">icons/playlist-folder.svg</file>
+    <file alias="icons/playlist-folder-open.svg">icons/playlist-folder-open.svg</file>
     <file alias="icons/open-media.svg">icons/open-media.svg</file>
     <file alias="icons/camera-fill.svg">icons/camera-fill.svg</file>
     <file alias="icons/fullscreen-enter.svg">icons/fullscreen-enter.svg</file>
