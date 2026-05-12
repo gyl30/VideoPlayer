@@ -94,6 +94,8 @@ class main_window : public QMainWindow
     void rebuild_control_rows(bool compact_mode);
     void install_playback_shortcuts(QWidget *target);
     void play_selected_playlist_item();
+    void update_recent_history_button();
+    void show_recent_history_menu();
     void update_playlist_item_icon(QTreeWidgetItem *item);
     void refresh_playlist_view();
     void set_active_playlist(const QString &playlist_id);
@@ -143,6 +145,7 @@ class main_window : public QMainWindow
     QPushButton *btn_title_maximize_ = nullptr;
     QPushButton *btn_title_close_ = nullptr;
     QPushButton *btn_open_media_ = nullptr;
+    QPushButton *btn_recent_history_ = nullptr;
     QPushButton *btn_screenshot_ = nullptr;
     QPushButton *btn_video_fullscreen_ = nullptr;
     QPushButton *btn_playlist_ = nullptr;
@@ -151,6 +154,7 @@ class main_window : public QMainWindow
     QPushButton *btn_playlist_create_ = nullptr;
     QPushButton *btn_playlist_manage_ = nullptr;
     QPushButton *btn_playback_rate_ = nullptr;
+    QMenu *recent_history_menu_ = nullptr;
     QMenu *playback_rate_menu_ = nullptr;
 
     QFrame *video_frame_ = nullptr;

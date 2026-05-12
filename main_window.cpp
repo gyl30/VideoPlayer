@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QDropEvent>
 #include <QFileInfo>
+#include <QFile>
 #include <QFontMetrics>
 #include <QIcon>
 #include <QCursor>
@@ -40,6 +41,7 @@ constexpr int k_compact_control_bar_width = 1080;
 constexpr int k_playback_history_limit = 100;
 constexpr int k_resume_prompt_minimum_second = 10;
 constexpr int k_resume_prompt_near_end_margin_second = 30;
+constexpr int k_recent_history_menu_limit = 20;
 constexpr int k_playlist_item_type_role = Qt::UserRole;
 constexpr int k_playlist_id_role = Qt::UserRole + 1;
 constexpr int k_playlist_row_role = Qt::UserRole + 2;
@@ -171,6 +173,73 @@ QStringList local_media_files_from_urls(const QList<QUrl> &urls)
         files.append(normalized_path);
     }
     return files;
+}
+
+QString popup_menu_stylesheet()
+{
+    return QStringLiteral(
+        "QMenu {"
+        "    background: #0b1929;"
+        "    color: #d8e7f6;"
+        "    border: 1px solid #1e7dbd;"
+        "    padding: 6px;"
+        "}"
+        "QMenu::item {"
+        "    padding: 7px 16px;"
+        "    margin: 2px 4px;"
+        "    border-radius: 4px;"
+        "}"
+        "QMenu::item:selected, QMenu::item:checked {"
+        "    background: #174a68;"
+        "    color: #ffffff;"
+        "}"
+        "QMenu::indicator {"
+        "    width: 0px;"
+        "    height: 0px;"
+        "}");
+}
+
+struct playback_history_item
+{
+    QString path;
+    QString title;
+    int position = 0;
+    int duration = 0;
+};
+
+QList<playback_history_item> load_playback_history(QSettings &settings, int limit)
+{
+    QList<playback_history_item> items;
+    const QStringList order = settings.value("history/order").toStringList();
+    for (const QString &path : order)
+    {
+        if (path.isEmpty())
+        {
+            continue;
+        }
+
+        const QString entry_group = playback_history_entry_group_key(path);
+        playback_history_item item;
+        item.path = settings.value(entry_group + "/path", path).toString();
+        item.title = settings.value(entry_group + "/title").toString();
+        item.position = settings.value(entry_group + "/position", 0).toInt();
+        item.duration = settings.value(entry_group + "/duration", 0).toInt();
+        if (item.path.isEmpty() || !QFileInfo::exists(item.path))
+        {
+            continue;
+        }
+        if (item.title.isEmpty())
+        {
+            item.title = QFileInfo(item.path).fileName();
+        }
+
+        items.append(std::move(item));
+        if (items.size() >= limit)
+        {
+            break;
+        }
+    }
+    return items;
 }
 }  // namespace
 
@@ -481,6 +550,10 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_open_media_->setCursor(Qt::PointingHandCursor);
     btn_open_media_->setIconSize(QSize(18, 18));
     btn_open_media_->setToolTip("打开媒体文件");
+    btn_recent_history_ = new QPushButton("历史", this);
+    btn_recent_history_->setObjectName("controlButtonWide");
+    btn_recent_history_->setCursor(Qt::PointingHandCursor);
+    btn_recent_history_->setToolTip("最近播放");
     btn_screenshot_ = new QPushButton(QIcon(":/icons/camera-fill.svg"), QString(), this);
     btn_screenshot_->setObjectName("toolBlockButton");
     btn_screenshot_->setCursor(Qt::PointingHandCursor);
@@ -511,27 +584,9 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_playback_rate_->setCursor(Qt::PointingHandCursor);
     btn_playback_rate_->setToolTip("播放速度");
     playback_rate_menu_ = new QMenu(this);
-    playback_rate_menu_->setStyleSheet(
-        "QMenu {"
-        "    background: #0b1929;"
-        "    color: #d8e7f6;"
-        "    border: 1px solid #1e7dbd;"
-        "    padding: 6px;"
-        "}"
-        "QMenu::item {"
-        "    padding: 7px 16px;"
-        "    margin: 2px 4px;"
-        "    border-radius: 4px;"
-        "}"
-        "QMenu::item:selected, QMenu::item:checked {"
-        "    background: #174a68;"
-        "    color: #ffffff;"
-        "}"
-        "QMenu::indicator {"
-        "    width: 0px;"
-        "    height: 0px;"
-        "}"
-    );
+    playback_rate_menu_->setStyleSheet(popup_menu_stylesheet());
+    recent_history_menu_ = new QMenu(this);
+    recent_history_menu_->setStyleSheet(popup_menu_stylesheet());
     for (double rate : {0.5, 0.75, 1.0, 1.25, 1.5, 2.0})
     {
         QAction *rate_action = playback_rate_menu_->addAction(format_playback_rate_text(rate));
@@ -570,6 +625,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
                 lbl_time_->setText(QString("%1 / %2").arg(format_time(static_cast<double>(value)), format_time(duration_)));
             });
     connect(btn_open_media_, &QPushButton::clicked, this, &main_window::on_open_file);
+    connect(btn_recent_history_, &QPushButton::clicked, this, &main_window::show_recent_history_menu);
     connect(btn_screenshot_, &QPushButton::clicked, this, &main_window::on_save_screenshot);
     connect(btn_video_fullscreen_, &QPushButton::clicked, this, &main_window::on_toggle_fullscreen);
     connect(btn_playlist_, &QPushButton::clicked, this, &main_window::on_toggle_playlist);
@@ -610,6 +666,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     install_playback_shortcuts(this);
     restore_persistent_state();
     update_volume_icon(volume_meter_ != nullptr ? volume_meter_->value() : 80);
+    update_recent_history_button();
     update_fullscreen_button();
     update_screenshot_button();
     update_playlist_buttons();
@@ -1517,6 +1574,58 @@ void main_window::update_playback_rate_button()
     }
 }
 
+void main_window::update_recent_history_button()
+{
+    if (btn_recent_history_ == nullptr)
+    {
+        return;
+    }
+
+    QSettings settings(k_settings_org, k_settings_app);
+    const bool has_history = !load_playback_history(settings, 1).isEmpty();
+    btn_recent_history_->setEnabled(has_history);
+    btn_recent_history_->setToolTip(has_history ? "最近播放" : "暂无播放历史");
+}
+
+void main_window::show_recent_history_menu()
+{
+    if (btn_recent_history_ == nullptr || recent_history_menu_ == nullptr)
+    {
+        return;
+    }
+
+    QSettings settings(k_settings_org, k_settings_app);
+    const QList<playback_history_item> items = load_playback_history(settings, k_recent_history_menu_limit);
+
+    recent_history_menu_->clear();
+
+    if (items.isEmpty())
+    {
+        QAction *empty_action = recent_history_menu_->addAction("暂无播放历史");
+        empty_action->setEnabled(false);
+    }
+    else
+    {
+        for (const playback_history_item &item : items)
+        {
+            QString action_text = item.title;
+            if (item.position > 0)
+            {
+                action_text += QString("  ·  %1").arg(format_time(static_cast<double>(item.position)));
+            }
+
+            QAction *action = recent_history_menu_->addAction(action_text);
+            action->setToolTip(QDir::toNativeSeparators(item.path));
+            connect(action, &QAction::triggered, this, [this, path = item.path]()
+            {
+                open_files_into_playlist(active_playlist_id(), QStringList{path});
+            });
+        }
+    }
+
+    recent_history_menu_->popup(btn_recent_history_->mapToGlobal(QPoint(0, btn_recent_history_->height())));
+}
+
 void main_window::show_playback_rate_menu()
 {
     if (btn_playback_rate_ == nullptr || playback_rate_menu_ == nullptr)
@@ -1988,6 +2097,7 @@ void main_window::record_playback_history_open(const QString &path)
     settings.setValue(entry_group + "/title", title);
     settings.setValue(entry_group + "/duration", static_cast<int>(duration_));
     settings.setValue(entry_group + "/last_played_at", QDateTime::currentDateTime().toString(Qt::ISODate));
+    update_recent_history_button();
 }
 
 void main_window::save_playback_history_entry(int current_second)
@@ -2007,6 +2117,7 @@ void main_window::save_playback_history_entry(int current_second)
     settings.setValue(entry_group + "/duration", static_cast<int>(duration_));
     settings.setValue(entry_group + "/position", current_second);
     settings.setValue(entry_group + "/last_played_at", QDateTime::currentDateTime().toString(Qt::ISODate));
+    update_recent_history_button();
 }
 
 void main_window::save_current_playback_progress(bool force)
@@ -2362,6 +2473,7 @@ void main_window::rebuild_control_rows(bool compact_mode)
         secondary_control_row_layout_->addWidget(lbl_time_);
         secondary_control_row_layout_->addStretch(1);
         secondary_control_row_layout_->addWidget(btn_playback_rate_);
+        secondary_control_row_layout_->addWidget(btn_recent_history_);
         secondary_control_row_layout_->addWidget(lbl_vol_icon_low_);
         secondary_control_row_layout_->addWidget(volume_meter_);
         secondary_control_row_layout_->addSpacing(12);
@@ -2386,6 +2498,7 @@ void main_window::rebuild_control_rows(bool compact_mode)
     primary_control_row_layout_->addWidget(btn_audio_only_);
     primary_control_row_layout_->addStretch(1);
     primary_control_row_layout_->addWidget(btn_playback_rate_);
+    primary_control_row_layout_->addWidget(btn_recent_history_);
     primary_control_row_layout_->addWidget(lbl_vol_icon_low_);
     primary_control_row_layout_->addWidget(volume_meter_);
     primary_control_row_layout_->addSpacing(12);
