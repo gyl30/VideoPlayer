@@ -60,6 +60,7 @@ class main_window : public QMainWindow
     void on_volume_changed(int value);
     void on_toggle_fullscreen();
     void on_toggle_playlist();
+    void on_save_screenshot();
     void on_play_previous();
     void on_play_next();
     void on_playlist_item_activated(QTreeWidgetItem *item, int column);
@@ -125,6 +126,7 @@ class main_window : public QMainWindow
     QPushButton *btn_title_maximize_ = nullptr;
     QPushButton *btn_title_close_ = nullptr;
     QPushButton *btn_open_media_ = nullptr;
+    QPushButton *btn_screenshot_ = nullptr;
     QPushButton *btn_video_fullscreen_ = nullptr;
     QPushButton *btn_playlist_ = nullptr;
     QPushButton *btn_sequential_playback_ = nullptr;

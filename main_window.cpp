@@ -1,6 +1,8 @@
 #include <QDebug>
 #include <QAbstractItemView>
 #include <QAbstractButton>
+#include <QDateTime>
+#include <QDir>
 #include <QFileInfo>
 #include <QFontMetrics>
 #include <QIcon>
@@ -10,6 +12,7 @@
 #include <QSignalBlocker>
 #include <QSettings>
 #include <QCoreApplication>
+#include <QStandardPaths>
 #include <QStyle>
 #include <QTime>
 #include <QToolTip>
@@ -402,6 +405,11 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_open_media_->setCursor(Qt::PointingHandCursor);
     btn_open_media_->setIconSize(QSize(18, 18));
     btn_open_media_->setToolTip("打开媒体文件");
+    btn_screenshot_ = new QPushButton(QIcon(":/icons/camera-fill.svg"), QString(), this);
+    btn_screenshot_->setObjectName("toolBlockButton");
+    btn_screenshot_->setCursor(Qt::PointingHandCursor);
+    btn_screenshot_->setIconSize(QSize(18, 18));
+    btn_screenshot_->setToolTip("保存当前画面");
     btn_video_fullscreen_ = new QPushButton(QIcon(":/icons/fullscreen-enter.svg"), QString(), this);
     btn_video_fullscreen_->setObjectName("toolBlockButton");
     btn_video_fullscreen_->setCursor(Qt::PointingHandCursor);
@@ -477,6 +485,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     control_row->addWidget(volume_meter_);
     control_row->addSpacing(12);
     control_row->addWidget(btn_open_media_);
+    control_row->addWidget(btn_screenshot_);
     control_row->addWidget(btn_video_fullscreen_);
     control_row->addWidget(btn_playlist_);
 
@@ -503,6 +512,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
                 lbl_time_->setText(QString("%1 / %2").arg(format_time(static_cast<double>(value)), format_time(duration_)));
             });
     connect(btn_open_media_, &QPushButton::clicked, this, &main_window::on_open_file);
+    connect(btn_screenshot_, &QPushButton::clicked, this, &main_window::on_save_screenshot);
     connect(btn_video_fullscreen_, &QPushButton::clicked, this, &main_window::on_toggle_fullscreen);
     connect(btn_playlist_, &QPushButton::clicked, this, &main_window::on_toggle_playlist);
     connect(btn_audio_only_, &QPushButton::toggled, this, &main_window::on_audio_only_toggled);
@@ -1897,6 +1907,56 @@ void main_window::on_toggle_playlist()
     const bool visible = playlist_panel_->isVisible();
     playlist_panel_->setVisible(!visible);
     update_playlist_buttons();
+}
+
+void main_window::on_save_screenshot()
+{
+    if (video_widget_ == nullptr)
+    {
+        return;
+    }
+
+    QWidget *dialog_parent = this;
+    if (is_video_fullscreen() && video_fullscreen_window_ != nullptr)
+    {
+        dialog_parent = video_fullscreen_window_;
+    }
+
+    QString pictures_dir = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+    if (pictures_dir.isEmpty() && !current_media_path_.isEmpty())
+    {
+        pictures_dir = QFileInfo(current_media_path_).absolutePath();
+    }
+    if (pictures_dir.isEmpty())
+    {
+        pictures_dir = QDir::currentPath();
+    }
+
+    QString base_name = current_media_path_.isEmpty() ? QStringLiteral("frame") : QFileInfo(current_media_path_).completeBaseName();
+    if (base_name.isEmpty())
+    {
+        base_name = QStringLiteral("frame");
+    }
+
+    const QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+    const QString default_path = QDir(pictures_dir).filePath(QString("%1_%2.png").arg(base_name, timestamp));
+    QString output_path = QFileDialog::getSaveFileName(dialog_parent, "保存截图", default_path, "PNG 图片 (*.png)");
+    if (output_path.isEmpty())
+    {
+        return;
+    }
+    if (!output_path.endsWith(".png", Qt::CaseInsensitive))
+    {
+        output_path += ".png";
+    }
+
+    if (!video_widget_->save_current_frame(output_path))
+    {
+        QMessageBox::critical(dialog_parent, "错误", "保存截图失败");
+        return;
+    }
+
+    QMessageBox::information(dialog_parent, "成功", QString("截图已保存到\n%1").arg(QDir::toNativeSeparators(output_path)));
 }
 
 void main_window::on_play_previous()

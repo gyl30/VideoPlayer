@@ -12,6 +12,7 @@
     <file alias="icons/title-close.svg">icons/title-close.svg</file>
     <file alias="icons/playlist.svg">icons/playlist.svg</file>
     <file alias="icons/open-media.svg">icons/open-media.svg</file>
+    <file alias="icons/camera-fill.svg">icons/camera-fill.svg</file>
     <file alias="icons/fullscreen-enter.svg">icons/fullscreen-enter.svg</file>
     <file alias="icons/fullscreen-exit.svg">icons/fullscreen-exit.svg</file>
     <file alias="icons/playlist-add.svg">icons/playlist-add.svg</file>
