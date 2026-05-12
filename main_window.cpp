@@ -3221,12 +3221,14 @@ void main_window::rebuild_control_rows(int layout_mode)
             }
         }
 
-        for (QPushButton *button : {btn_audio_only_, btn_playback_rate_})
+        if (btn_audio_only_ != nullptr)
         {
-            if (button != nullptr)
-            {
-                button->setFixedHeight(wide_height);
-            }
+            btn_audio_only_->setFixedHeight(wide_height);
+        }
+
+        if (btn_playback_rate_ != nullptr)
+        {
+            btn_playback_rate_->setFixedSize(tool_size);
         }
 
         for (QPushButton *button : {btn_open_media_, btn_video_fullscreen_, btn_playlist_})
