@@ -9,7 +9,11 @@ Q_DECLARE_METATYPE(std::shared_ptr<media_frame>);
 static void start(const std::string& app_name) { LOG_INFO("{} start", app_name); }
 static void shutdown(const std::string& app_name) { LOG_INFO("{} shutdown", app_name); }
 
+#if defined(QT_NEEDS_QMAIN)
+int qMain(int argc, char* argv[])
+#else
 int main(int argc, char* argv[])
+#endif
 {
     std::string app_name(argv[0]);
     init_log(app_name + ".log");
