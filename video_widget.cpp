@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <QImage>
+#include <QPainter>
+#include <QTextDocument>
 #include "log.h"
 #include "video_widget.h"
 
@@ -101,6 +103,28 @@ void video_widget::clear()
 }
 
 bool video_widget::has_frame() const { return current_frame_ != nullptr && current_frame_->raw() != nullptr; }
+
+void video_widget::set_media_info_overlay_html(const QString &html)
+{
+    if (media_info_overlay_html_ == html)
+    {
+        return;
+    }
+
+    media_info_overlay_html_ = html;
+    update();
+}
+
+void video_widget::set_media_info_overlay_visible(bool visible)
+{
+    if (media_info_overlay_visible_ == visible)
+    {
+        return;
+    }
+
+    media_info_overlay_visible_ = visible;
+    update();
+}
 
 bool video_widget::save_current_frame(const QString &path) const
 {
@@ -322,6 +346,48 @@ void video_widget::paintGL()
     program_->disableAttributeArray(posLoc);
     program_->disableAttributeArray(texLoc);
     program_->release();
+
+    paint_media_info_overlay();
+}
+
+void video_widget::paint_media_info_overlay()
+{
+    if (!media_info_overlay_visible_ || media_info_overlay_html_.isEmpty())
+    {
+        return;
+    }
+
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
+
+    QTextDocument document;
+    document.setDocumentMargin(0);
+    document.setDefaultStyleSheet(
+        "body {"
+        "    color: #eef7ff;"
+        "    font-size: 12px;"
+        "    font-family: \"Microsoft YaHei\", \"Segoe UI\", sans-serif;"
+        "}");
+    document.setHtml("<body>" + media_info_overlay_html_ + "</body>");
+
+    const qreal overlay_width = static_cast<qreal>(qMin(420, qMax(220, width())));
+    constexpr qreal horizontal_padding = 12.0;
+    constexpr qreal vertical_padding = 10.0;
+    document.setTextWidth(overlay_width - horizontal_padding * 2.0);
+
+    const QSizeF text_size = document.size();
+    const QRectF background_rect(0.0,
+                                 0.0,
+                                 qMin(overlay_width, text_size.width() + horizontal_padding * 2.0),
+                                 text_size.height() + vertical_padding * 2.0);
+
+    painter.setPen(QPen(QColor(131, 215, 255, 46), 1.0));
+    painter.setBrush(QColor(7, 23, 40, 180));
+    painter.drawRoundedRect(background_rect, 8.0, 8.0);
+
+    painter.translate(horizontal_padding, vertical_padding);
+    document.drawContents(&painter);
 }
 
 void video_widget::update_color_matrix(const AVFrame *frame)

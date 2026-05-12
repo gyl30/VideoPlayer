@@ -31,6 +31,8 @@ class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
     void clear();
     [[nodiscard]] bool has_frame() const;
     [[nodiscard]] bool save_current_frame(const QString &path) const;
+    void set_media_info_overlay_html(const QString &html);
+    void set_media_info_overlay_visible(bool visible);
 
    public slots:
     void on_frame_ready(std::shared_ptr<media_frame> frame);
@@ -42,6 +44,7 @@ class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
 
    private:
     void cleanup_gl_resources();
+    void paint_media_info_overlay();
     void update_color_matrix(const AVFrame *frame);
     static QMatrix4x4 get_color_matrix(AVColorSpace space, AVColorRange range);
 
@@ -57,6 +60,8 @@ class video_widget : public QOpenGLWidget, protected QOpenGLFunctions
     AVColorRange current_color_range_ = AVCOL_RANGE_UNSPECIFIED;
     QMatrix4x4 color_matrix_;
     int matrix_uniform_loc_ = -1;
+    QString media_info_overlay_html_;
+    bool media_info_overlay_visible_ = false;
 };
 
 #endif

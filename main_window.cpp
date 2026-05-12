@@ -513,23 +513,6 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     video_widget_->setAcceptDrops(true);
     video_frame_layout_->addWidget(video_widget_, 1);
 
-    media_info_overlay_ = new QFrame(video_widget_);
-    media_info_overlay_->setObjectName("mediaInfoOverlay");
-    media_info_overlay_->setAttribute(Qt::WA_TransparentForMouseEvents);
-    media_info_overlay_->hide();
-
-    auto *media_info_layout = new QVBoxLayout(media_info_overlay_);
-    media_info_layout->setContentsMargins(12, 10, 12, 10);
-    media_info_layout->setSpacing(0);
-
-    lbl_media_info_ = new QLabel(media_info_overlay_);
-    lbl_media_info_->setObjectName("mediaInfoLabel");
-    lbl_media_info_->setTextFormat(Qt::RichText);
-    lbl_media_info_->setWordWrap(true);
-    lbl_media_info_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    lbl_media_info_->setAttribute(Qt::WA_TransparentForMouseEvents);
-    media_info_layout->addWidget(lbl_media_info_);
-
     content_layout->addWidget(video_frame_, 1);
 
     playlist_panel_ = new QFrame(this);
@@ -1080,15 +1063,6 @@ void main_window::init_styles()
         "}"
         "QOpenGLWidget#videoSurface {"
         "    background: #000000;"
-        "}"
-        "QFrame#mediaInfoOverlay {"
-        "    background: rgba(7, 23, 40, 180);"
-        "    border: 1px solid rgba(131, 215, 255, 0.18);"
-        "    border-radius: 8px;"
-        "}"
-        "QLabel#mediaInfoLabel {"
-        "    color: #eef7ff;"
-        "    font-size: 12px;"
         "}"
         "QFrame#playlistPanel {"
         "    background: #0b1929;"
@@ -1872,7 +1846,7 @@ void main_window::toggle_media_info_overlay()
 
 void main_window::update_media_info_overlay()
 {
-    if (media_info_overlay_ == nullptr || lbl_media_info_ == nullptr || video_widget_ == nullptr)
+    if (video_widget_ == nullptr)
     {
         return;
     }
@@ -1881,7 +1855,7 @@ void main_window::update_media_info_overlay()
     const bool should_show = media_info_overlay_enabled_ && playing_ && has_video && !audio_only_mode_;
     if (!should_show)
     {
-        media_info_overlay_->hide();
+        video_widget_->set_media_info_overlay_visible(false);
         return;
     }
 
@@ -1966,28 +1940,18 @@ void main_window::update_media_info_overlay()
 
     lines.append(QString("<span style=\"color:#8ecfff;\">状态</span> %1").arg(format_playback_rate_text(playback_rate_).toHtmlEscaped()));
 
-    lbl_media_info_->setText(lines.join("<br>"));
-    update_media_info_overlay_geometry();
-    media_info_overlay_->show();
-    media_info_overlay_->raise();
+    video_widget_->set_media_info_overlay_html(lines.join("<br>"));
+    video_widget_->set_media_info_overlay_visible(true);
 }
 
 void main_window::update_media_info_overlay_geometry()
 {
-    if (media_info_overlay_ == nullptr || lbl_media_info_ == nullptr || video_widget_ == nullptr)
+    if (video_widget_ == nullptr)
     {
         return;
     }
 
-    if (!media_info_overlay_->isVisible() && !media_info_overlay_enabled_)
-    {
-        return;
-    }
-
-    const int max_width = qMin(420, qMax(220, video_widget_->width()));
-    media_info_overlay_->setFixedWidth(max_width);
-    media_info_overlay_->adjustSize();
-    media_info_overlay_->move(0, 0);
+    video_widget_->update();
 }
 
 void main_window::show_shortcuts_help()
