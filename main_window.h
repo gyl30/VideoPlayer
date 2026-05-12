@@ -118,6 +118,8 @@ class main_window : public QMainWindow
     void save_persistent_state();
     void save_playlist_state();
     void save_volume_state(int value);
+    void record_playback_history_open(const QString &path);
+    void save_playback_history_entry(int current_second);
     void save_current_playback_progress(bool force = false);
     void restore_playback_progress(const QString &path);
     bool is_video_fullscreen() const;

@@ -37,6 +37,7 @@ constexpr const char *k_settings_org = "gyl30";
 constexpr const char *k_settings_app = "VideoPlayer";
 constexpr int k_resize_border_width = 8;
 constexpr int k_compact_control_bar_width = 1080;
+constexpr int k_playback_history_limit = 100;
 constexpr int k_playlist_item_type_role = Qt::UserRole;
 constexpr int k_playlist_id_role = Qt::UserRole + 1;
 constexpr int k_playlist_row_role = Qt::UserRole + 2;
@@ -109,6 +110,27 @@ QString normalize_media_path(const QString &path)
 QString playback_position_key(const QString &path)
 {
     return QStringLiteral("playback/positions/%1").arg(QString::fromLatin1(QUrl::toPercentEncoding(normalize_media_path(path))));
+}
+
+QString playback_history_entry_group_key(const QString &path)
+{
+    return QStringLiteral("history/items/%1").arg(QString::fromLatin1(QUrl::toPercentEncoding(normalize_media_path(path))));
+}
+
+void touch_playback_history_order(QSettings &settings, const QString &path)
+{
+    const QString normalized_path = normalize_media_path(path);
+    QStringList order = settings.value("history/order").toStringList();
+    order.removeAll(normalized_path);
+    order.prepend(normalized_path);
+
+    while (order.size() > k_playback_history_limit)
+    {
+        const QString removed_path = order.takeLast();
+        settings.remove(playback_history_entry_group_key(removed_path));
+    }
+
+    settings.setValue("history/order", order);
 }
 
 QString format_playback_rate_text(double rate)
@@ -1937,6 +1959,44 @@ void main_window::save_volume_state(int value)
     settings.setValue("audio/volume", qBound(0, value, 100));
 }
 
+void main_window::record_playback_history_open(const QString &path)
+{
+    if (path.isEmpty())
+    {
+        return;
+    }
+
+    const QString normalized_path = normalize_media_path(path);
+    const QString entry_group = playback_history_entry_group_key(normalized_path);
+    const QString title = QFileInfo(normalized_path).fileName();
+
+    QSettings settings(k_settings_org, k_settings_app);
+    touch_playback_history_order(settings, normalized_path);
+    settings.setValue(entry_group + "/path", normalized_path);
+    settings.setValue(entry_group + "/title", title);
+    settings.setValue(entry_group + "/duration", static_cast<int>(duration_));
+    settings.setValue(entry_group + "/last_played_at", QDateTime::currentDateTime().toString(Qt::ISODate));
+}
+
+void main_window::save_playback_history_entry(int current_second)
+{
+    if (current_media_path_.isEmpty())
+    {
+        return;
+    }
+
+    const QString normalized_path = normalize_media_path(current_media_path_);
+    const QString entry_group = playback_history_entry_group_key(normalized_path);
+    const QString title = QFileInfo(normalized_path).fileName();
+
+    QSettings settings(k_settings_org, k_settings_app);
+    settings.setValue(entry_group + "/path", normalized_path);
+    settings.setValue(entry_group + "/title", title);
+    settings.setValue(entry_group + "/duration", static_cast<int>(duration_));
+    settings.setValue(entry_group + "/position", current_second);
+    settings.setValue(entry_group + "/last_played_at", QDateTime::currentDateTime().toString(Qt::ISODate));
+}
+
 void main_window::save_current_playback_progress(bool force)
 {
     if (current_media_path_.isEmpty())
@@ -1969,6 +2029,7 @@ void main_window::save_current_playback_progress(bool force)
 
     QSettings settings(k_settings_org, k_settings_app);
     settings.setValue(playback_position_key(current_media_path_), current_second);
+    save_playback_history_entry(current_second);
 }
 
 void main_window::restore_playback_progress(const QString &path)
@@ -2581,6 +2642,7 @@ void main_window::play_playlist_item(const QString &playlist_id, int row)
     last_saved_progress_second_ = -1;
     current_playback_playlist_id_ = playlist_id;
     current_playback_row_ = row;
+    record_playback_history_open(path);
     playlist_store_.set_active_playlist(playlist_id);
     playlist_store_.set_current_row(playlist_id, row);
     refresh_playlist_view();
