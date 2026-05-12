@@ -2,13 +2,16 @@
 #include <QAbstractItemView>
 #include <QAbstractButton>
 #include <QDateTime>
+#include <QDragEnterEvent>
 #include <QDir>
+#include <QDropEvent>
 #include <QFileInfo>
 #include <QFontMetrics>
 #include <QIcon>
 #include <QCursor>
 #include <QKeySequence>
 #include <QMenu>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QSignalBlocker>
 #include <QSettings>
@@ -121,6 +124,30 @@ QString format_playback_rate_text(double rate)
     }
     return text + "x";
 }
+
+QStringList local_media_files_from_urls(const QList<QUrl> &urls)
+{
+    QStringList files;
+    QSet<QString> seen_paths;
+    for (const QUrl &url : urls)
+    {
+        if (!url.isLocalFile())
+        {
+            continue;
+        }
+
+        const QString normalized_path = normalize_media_path(url.toLocalFile());
+        QFileInfo file_info(normalized_path);
+        if (!file_info.exists() || !file_info.isFile() || seen_paths.contains(normalized_path))
+        {
+            continue;
+        }
+
+        seen_paths.insert(normalized_path);
+        files.append(normalized_path);
+    }
+    return files;
+}
 }  // namespace
 
 QString format_time(double seconds)
@@ -159,6 +186,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     title_bar_->setObjectName("titleBar");
     title_bar_->setFixedHeight(48);
     title_bar_->installEventFilter(this);
+    title_bar_->setAcceptDrops(true);
 
     auto *title_layout = new QHBoxLayout(title_bar_);
     title_layout->setContentsMargins(0, 0, 0, 0);
@@ -168,6 +196,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     title_drag_area_->setObjectName("titleDragArea");
     title_drag_area_->installEventFilter(this);
     title_drag_area_->setCursor(Qt::ArrowCursor);
+    title_drag_area_->setAcceptDrops(true);
 
     auto *title_drag_layout = new QHBoxLayout(title_drag_area_);
     title_drag_layout->setContentsMargins(16, 0, 0, 0);
@@ -240,12 +269,14 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 
     auto *content_widget = new QWidget(this);
     content_widget->setObjectName("contentWidget");
+    content_widget->setAcceptDrops(true);
     auto *content_layout = new QHBoxLayout(content_widget);
     content_layout->setContentsMargins(0, 0, 0, 0);
     content_layout->setSpacing(0);
 
     video_frame_ = new QFrame(this);
     video_frame_->setObjectName("videoFrame");
+    video_frame_->setAcceptDrops(true);
     video_frame_layout_ = new QVBoxLayout(video_frame_);
     video_frame_layout_->setContentsMargins(0, 0, 0, 0);
     video_frame_layout_->setSpacing(0);
@@ -254,12 +285,14 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     video_widget_->setObjectName("videoSurface");
     video_widget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     video_widget_->setContextMenuPolicy(Qt::NoContextMenu);
+    video_widget_->setAcceptDrops(true);
     video_frame_layout_->addWidget(video_widget_, 1);
     content_layout->addWidget(video_frame_, 1);
 
     playlist_panel_ = new QFrame(this);
     playlist_panel_->setObjectName("playlistPanel");
     playlist_panel_->setFixedWidth(238);
+    playlist_panel_->setAcceptDrops(true);
 
     auto *playlist_layout = new QVBoxLayout(playlist_panel_);
     playlist_layout->setContentsMargins(14, 14, 14, 14);
@@ -301,6 +334,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     playlist_view_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     playlist_view_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     playlist_view_->setContextMenuPolicy(Qt::NoContextMenu);
+    playlist_view_->setAcceptDrops(true);
     playlist_layout->addWidget(playlist_view_, 1);
     playlist_panel_->hide();
     content_layout->addWidget(playlist_panel_);
@@ -310,6 +344,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     control_panel_ = new QWidget(this);
     control_panel_->setObjectName("controlPanel");
     control_panel_->setFixedHeight(104);
+    control_panel_->setAcceptDrops(true);
 
     auto *control_layout = new QVBoxLayout(control_panel_);
     control_layout->setContentsMargins(0, 0, 0, 0);
@@ -573,6 +608,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     set_playlist_scrollbar_visible(false);
 
     setMouseTracking(true);
+    setAcceptDrops(true);
     installEventFilter(this);
     for (auto *widget : findChildren<QWidget *>())
     {
@@ -1060,6 +1096,11 @@ void main_window::closeEvent(QCloseEvent *event)
 
 bool main_window::eventFilter(QObject *watched, QEvent *event)
 {
+    if (handle_file_drop(watched, event))
+    {
+        return true;
+    }
+
     if (handle_window_resize(watched, event))
     {
         return true;
@@ -1648,6 +1689,89 @@ void main_window::set_active_playlist(const QString &playlist_id)
 
 QString main_window::active_playlist_id() const { return playlist_store_.active_playlist_id(); }
 
+bool main_window::is_drop_region_object(const QObject *watched) const
+{
+    if (watched == nullptr)
+    {
+        return false;
+    }
+
+    if (watched == this || watched == video_fullscreen_window_)
+    {
+        return true;
+    }
+
+    const auto *widget = qobject_cast<const QWidget *>(watched);
+    if (widget == nullptr)
+    {
+        return false;
+    }
+
+    if (isAncestorOf(const_cast<QWidget *>(widget)))
+    {
+        return true;
+    }
+
+    return video_fullscreen_window_ != nullptr && video_fullscreen_window_->isAncestorOf(const_cast<QWidget *>(widget));
+}
+
+bool main_window::handle_file_drop(QObject *watched, QEvent *event)
+{
+    if (!is_drop_region_object(watched) || event == nullptr)
+    {
+        return false;
+    }
+
+    if (event->type() == QEvent::DragEnter)
+    {
+        auto *drag_enter_event = static_cast<QDragEnterEvent *>(event);
+        const QMimeData *mime_data = drag_enter_event->mimeData();
+        if (mime_data == nullptr || local_media_files_from_urls(mime_data->urls()).isEmpty())
+        {
+            return false;
+        }
+
+        drag_enter_event->acceptProposedAction();
+        return true;
+    }
+
+    if (event->type() == QEvent::DragMove)
+    {
+        auto *drag_move_event = static_cast<QDragMoveEvent *>(event);
+        const QMimeData *mime_data = drag_move_event->mimeData();
+        if (mime_data == nullptr || local_media_files_from_urls(mime_data->urls()).isEmpty())
+        {
+            return false;
+        }
+
+        drag_move_event->acceptProposedAction();
+        return true;
+    }
+
+    if (event->type() != QEvent::Drop)
+    {
+        return false;
+    }
+
+    auto *drop_event = static_cast<QDropEvent *>(event);
+    const QMimeData *mime_data = drop_event->mimeData();
+    if (mime_data == nullptr)
+    {
+        return false;
+    }
+
+    const QStringList files = local_media_files_from_urls(mime_data->urls());
+    if (files.isEmpty())
+    {
+        return false;
+    }
+
+    LOG_INFO("media files dropped count {}", files.size());
+    open_files_into_playlist(active_playlist_id(), files);
+    drop_event->acceptProposedAction();
+    return true;
+}
+
 void main_window::open_playlist_management_dialog()
 {
     playlist_management_dialog dialog(playlist_store_, this);
@@ -1892,6 +2016,7 @@ void main_window::enter_video_fullscreen()
         video_fullscreen_window_->setObjectName("videoFullscreenWindow");
         video_fullscreen_window_->setFocusPolicy(Qt::StrongFocus);
         video_fullscreen_window_->setStyleSheet("background: #000000;");
+        video_fullscreen_window_->setAcceptDrops(true);
         video_fullscreen_window_->installEventFilter(this);
         install_playback_shortcuts(video_fullscreen_window_);
 
@@ -1983,6 +2108,11 @@ void main_window::open_files_into_playlist(const QString &playlist_id)
         return;
     }
 
+    open_files_into_playlist(playlist_id, filenames);
+}
+
+void main_window::open_files_into_playlist(const QString &playlist_id, const QStringList &filenames)
+{
     const QString target_playlist_id = playlist_id.isEmpty() ? active_playlist_id() : playlist_id;
     int target_row = -1;
     for (const QString &filename : filenames)

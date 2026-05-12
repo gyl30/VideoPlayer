@@ -74,6 +74,7 @@ class main_window : public QMainWindow
     void stop_play();
     bool start_play(const std::string &filepath);
     void open_files_into_playlist(const QString &playlist_id);
+    void open_files_into_playlist(const QString &playlist_id, const QStringList &filenames);
     void do_seek_relative(double seconds);
     void init_styles();
     void toggle_window_maximized();
@@ -96,6 +97,8 @@ class main_window : public QMainWindow
     void refresh_playlist_view();
     void set_active_playlist(const QString &playlist_id);
     QString active_playlist_id() const;
+    bool is_drop_region_object(const QObject *watched) const;
+    bool handle_file_drop(QObject *watched, QEvent *event);
     void open_playlist_management_dialog();
     void apply_playlist_management_changes(const playlist_store &store);
     bool is_playlist_item(const QTreeWidgetItem *item) const;
