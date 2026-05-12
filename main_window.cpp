@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QFontMetrics>
 #include <QIcon>
+#include <QCursor>
 #include <QKeySequence>
 #include <QMenu>
 #include <QMouseEvent>
@@ -538,6 +539,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     restore_persistent_state();
     update_volume_icon(volume_meter_ != nullptr ? volume_meter_->value() : 80);
     update_fullscreen_button();
+    update_screenshot_button();
     update_playlist_buttons();
     update_playlist_header_buttons();
 
@@ -1257,6 +1259,37 @@ void main_window::update_fullscreen_button()
     }
 }
 
+void main_window::update_screenshot_button()
+{
+    if (btn_screenshot_ == nullptr)
+    {
+        return;
+    }
+
+    const bool has_video = demuxer_ != nullptr && demuxer_->video_index() >= 0;
+    const bool has_frame = video_widget_ != nullptr && video_widget_->has_frame();
+    if (audio_only_mode_)
+    {
+        btn_screenshot_->setEnabled(false);
+        btn_screenshot_->setToolTip("仅音频模式下不可截图");
+    }
+    else if (!has_video)
+    {
+        btn_screenshot_->setEnabled(false);
+        btn_screenshot_->setToolTip("当前媒体没有视频画面");
+    }
+    else if (!has_frame)
+    {
+        btn_screenshot_->setEnabled(false);
+        btn_screenshot_->setToolTip("等待视频画面后可截图");
+    }
+    else
+    {
+        btn_screenshot_->setEnabled(true);
+        btn_screenshot_->setToolTip("保存当前画面");
+    }
+}
+
 void main_window::update_playback_rate_button()
 {
     if (btn_playback_rate_ != nullptr)
@@ -1956,7 +1989,7 @@ void main_window::on_save_screenshot()
         return;
     }
 
-    QMessageBox::information(dialog_parent, "成功", QString("截图已保存到\n%1").arg(QDir::toNativeSeparators(output_path)));
+    QToolTip::showText(QCursor::pos(), QString("截图已保存到\n%1").arg(QDir::toNativeSeparators(output_path)), dialog_parent);
 }
 
 void main_window::on_play_previous()
@@ -2000,6 +2033,7 @@ void main_window::on_audio_only_toggled(bool checked)
         video_widget_->clear();
     }
     update_fullscreen_button();
+    update_screenshot_button();
 }
 
 void main_window::on_video_frame_ready(std::shared_ptr<media_frame> frame)
@@ -2010,6 +2044,7 @@ void main_window::on_video_frame_ready(std::shared_ptr<media_frame> frame)
     }
 
     video_widget_->on_frame_ready(std::move(frame));
+    update_screenshot_button();
 }
 
 void main_window::on_volume_changed(int value)
@@ -2310,6 +2345,7 @@ void main_window::stop_play()
     refresh_playlist_view();
     update_playlist_buttons();
     update_fullscreen_button();
+    update_screenshot_button();
     LOG_INFO("stop play finished");
 }
 
@@ -2427,6 +2463,7 @@ bool main_window::start_play(const std::string &filepath)
     ui_timer_->start();
     this->setFocus();
     update_fullscreen_button();
+    update_screenshot_button();
 
     LOG_INFO("play started successfully");
 

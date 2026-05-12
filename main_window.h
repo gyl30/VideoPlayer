@@ -77,6 +77,7 @@ class main_window : public QMainWindow
     void toggle_window_maximized();
     void update_title_maximize_button();
     void update_fullscreen_button();
+    void update_screenshot_button();
     void play_playlist_item(const QString &playlist_id, int row);
     void play_playlist_row(int row);
     void update_playlist_buttons();
