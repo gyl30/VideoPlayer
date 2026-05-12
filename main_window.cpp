@@ -1357,6 +1357,11 @@ bool main_window::eventFilter(QObject *watched, QEvent *event)
         update_media_info_overlay_geometry();
     }
 
+    if (watched == video_fullscreen_window_ && event != nullptr && event->type() == QEvent::Resize)
+    {
+        update_media_info_overlay_geometry();
+    }
+
     if (handle_file_drop(watched, event))
     {
         return true;
@@ -2818,14 +2823,14 @@ void main_window::enter_video_fullscreen()
     video_frame_layout_->removeWidget(video_widget_);
     video_widget_->setParent(video_fullscreen_window_);
     video_fullscreen_layout_->addWidget(video_widget_, 1);
-    video_widget_->show();
-    update_media_info_overlay_geometry();
 
     video_fullscreen_window_->showFullScreen();
+    video_widget_->show();
     this->hide();
     video_fullscreen_window_->activateWindow();
     video_fullscreen_window_->raise();
     video_fullscreen_window_->setFocus();
+    update_media_info_overlay();
     update_fullscreen_button();
 }
 
@@ -2845,7 +2850,6 @@ void main_window::exit_video_fullscreen()
     video_widget_->setParent(video_frame_);
     video_frame_layout_->addWidget(video_widget_, 1);
     video_widget_->show();
-    update_media_info_overlay_geometry();
 
     video_fullscreen_window_->hide();
     if (fullscreen_restore_maximized_)
@@ -2865,6 +2869,7 @@ void main_window::exit_video_fullscreen()
     this->activateWindow();
     this->raise();
     this->setFocus();
+    update_media_info_overlay();
 }
 
 void main_window::on_open_file()
