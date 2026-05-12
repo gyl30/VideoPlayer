@@ -178,7 +178,8 @@ void playlist_name_dialog::setup_ui(const QString &title, const QString &label_t
     btn_accept_ = new QPushButton(accept_text, button_row);
     btn_accept_->setObjectName("dialogActionButton");
     btn_accept_->setCursor(Qt::PointingHandCursor);
-    btn_accept_->setDefault(true);
+    btn_accept_->setDefault(false);
+    btn_accept_->setAutoDefault(false);
 
     button_layout->addStretch(1);
     button_layout->addWidget(btn_cancel_);
@@ -195,7 +196,6 @@ void playlist_name_dialog::setup_ui(const QString &title, const QString &label_t
     connect(btn_close, &QPushButton::clicked, this, &QDialog::reject);
     connect(btn_cancel_, &QPushButton::clicked, this, &QDialog::reject);
     connect(btn_accept_, &QPushButton::clicked, this, &QDialog::accept);
-    connect(line_edit_, &QLineEdit::returnPressed, this, &QDialog::accept);
 }
 
 void playlist_name_dialog::center_to_parent()
