@@ -189,7 +189,7 @@ class main_window : public QMainWindow
     bool fullscreen_restore_maximized_ = false;
     QString current_media_path_;
     QString current_playback_playlist_id_;
-    QString media_title_full_text_ = "视频播放器";
+    QString media_title_full_text_;
     int media_title_scroll_offset_ = 0;
     int last_saved_progress_second_ = -1;
     int current_playback_row_ = -1;

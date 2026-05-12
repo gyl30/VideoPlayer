@@ -247,7 +247,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     media_title_layout->setContentsMargins(0, 0, 24, 0);
     media_title_layout->setSpacing(0);
 
-    lbl_media_title_ = new QLabel("视频播放器", this);
+    lbl_media_title_ = new QLabel(QString(), this);
     lbl_media_title_->setObjectName("mediaTitle");
     lbl_media_title_->setAlignment(Qt::AlignCenter);
     lbl_media_title_->setMinimumWidth(0);
@@ -603,10 +603,10 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     connect(ui_timer_, &QTimer::timeout, this, &main_window::on_update_ui);
 
     title_scroll_timer_ = new QTimer(this);
-    title_scroll_timer_->setInterval(180);
+    title_scroll_timer_->setInterval(320);
     connect(title_scroll_timer_, &QTimer::timeout, this, &main_window::on_title_scroll_tick);
 
-    set_media_title_text("视频播放器");
+    set_media_title_text(QString());
     install_playback_shortcuts(this);
     restore_persistent_state();
     update_volume_icon(volume_meter_ != nullptr ? volume_meter_->value() : 80);
@@ -1553,7 +1553,7 @@ void main_window::set_playback_rate(double rate)
 
 void main_window::set_media_title_text(const QString &text)
 {
-    media_title_full_text_ = text.isEmpty() ? QStringLiteral("视频播放器") : text;
+    media_title_full_text_ = text.trimmed();
     media_title_scroll_offset_ = 0;
     update_media_title_text();
 }
@@ -1562,6 +1562,16 @@ void main_window::update_media_title_text()
 {
     if (lbl_media_title_ == nullptr)
     {
+        return;
+    }
+
+    if (media_title_full_text_.isEmpty())
+    {
+        if (title_scroll_timer_ != nullptr)
+        {
+            title_scroll_timer_->stop();
+        }
+        lbl_media_title_->clear();
         return;
     }
 
@@ -2875,6 +2885,12 @@ void main_window::stop_play()
     current_playback_playlist_id_.clear();
     current_playback_row_ = -1;
     last_saved_progress_second_ = -1;
+    this->setWindowTitle("视频播放器");
+    if (video_fullscreen_window_ != nullptr)
+    {
+        video_fullscreen_window_->setWindowTitle(this->windowTitle());
+    }
+    set_media_title_text(QString());
     refresh_playlist_view();
     update_playlist_buttons();
     update_fullscreen_button();
