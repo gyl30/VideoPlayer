@@ -65,6 +65,7 @@ class main_window : public QMainWindow
     void on_save_screenshot();
     void on_play_previous();
     void on_play_next();
+    void on_open_folder();
     void on_playlist_item_activated(QTreeWidgetItem *item, int column);
     void on_audio_only_toggled(bool checked);
     void on_video_frame_ready(std::shared_ptr<media_frame> frame);
@@ -94,6 +95,7 @@ class main_window : public QMainWindow
     void rebuild_control_rows(bool compact_mode);
     void install_playback_shortcuts(QWidget *target);
     void play_selected_playlist_item();
+    void show_open_media_menu();
     void update_recent_history_button();
     void show_recent_history_menu();
     void update_playlist_item_icon(QTreeWidgetItem *item);
@@ -154,6 +156,7 @@ class main_window : public QMainWindow
     QPushButton *btn_playlist_create_ = nullptr;
     QPushButton *btn_playlist_manage_ = nullptr;
     QPushButton *btn_playback_rate_ = nullptr;
+    QMenu *open_media_menu_ = nullptr;
     QMenu *recent_history_menu_ = nullptr;
     QMenu *playback_rate_menu_ = nullptr;
 

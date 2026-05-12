@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QDragEnterEvent>
 #include <QDir>
+#include <QDirIterator>
 #include <QDropEvent>
 #include <QFileInfo>
 #include <QFile>
@@ -25,6 +26,7 @@
 #include <QToolTip>
 #include <QUrl>
 #include <QWindow>
+#include <algorithm>
 #include <cmath>
 #include "log.h"
 #include "main_window.h"
@@ -151,6 +153,56 @@ QString format_playback_rate_text(double rate)
     return text + "x";
 }
 
+QString media_file_dialog_filter()
+{
+    return QStringLiteral(
+        "Media Files (*.mp4 *.mkv *.avi *.mov *.flv *.webm *.mp3 *.flac *.wav *.aac *.ogg *.m4a *.opus);;"
+        "Video Files (*.mp4 *.mkv *.avi *.mov *.flv *.webm);;"
+        "Audio Files (*.mp3 *.flac *.wav *.aac *.ogg *.m4a *.opus);;"
+        "All Files (*)");
+}
+
+const QSet<QString> &supported_media_extensions()
+{
+    static const QSet<QString> extensions = {
+        "mp4", "mkv", "avi", "mov", "flv", "webm", "mp3", "flac", "wav", "aac", "ogg", "m4a", "opus"};
+    return extensions;
+}
+
+bool is_supported_media_file(const QFileInfo &file_info)
+{
+    return file_info.isFile() && supported_media_extensions().contains(file_info.suffix().toLower());
+}
+
+QStringList collect_media_files_from_directory(const QString &directory_path)
+{
+    QStringList files;
+    QDirIterator iterator(directory_path, QDir::Files | QDir::NoSymLinks, QDirIterator::Subdirectories);
+    while (iterator.hasNext())
+    {
+        const QString next_path = iterator.next();
+        const QFileInfo file_info(next_path);
+        if (!is_supported_media_file(file_info))
+        {
+            continue;
+        }
+
+        files.append(normalize_media_path(file_info.absoluteFilePath()));
+    }
+
+    std::sort(files.begin(), files.end(), [](const QString &lhs, const QString &rhs)
+    {
+        const int name_compare = QString::localeAwareCompare(QFileInfo(lhs).fileName(), QFileInfo(rhs).fileName());
+        if (name_compare != 0)
+        {
+            return name_compare < 0;
+        }
+
+        return QString::localeAwareCompare(lhs, rhs) < 0;
+    });
+    return files;
+}
+
 QStringList local_media_files_from_urls(const QList<QUrl> &urls)
 {
     QStringList files;
@@ -164,7 +216,27 @@ QStringList local_media_files_from_urls(const QList<QUrl> &urls)
 
         const QString normalized_path = normalize_media_path(url.toLocalFile());
         QFileInfo file_info(normalized_path);
-        if (!file_info.exists() || !file_info.isFile() || seen_paths.contains(normalized_path))
+        if (!file_info.exists())
+        {
+            continue;
+        }
+
+        if (file_info.isDir())
+        {
+            for (const QString &media_path : collect_media_files_from_directory(normalized_path))
+            {
+                if (seen_paths.contains(media_path))
+                {
+                    continue;
+                }
+
+                seen_paths.insert(media_path);
+                files.append(media_path);
+            }
+            continue;
+        }
+
+        if (!is_supported_media_file(file_info) || seen_paths.contains(normalized_path))
         {
             continue;
         }
@@ -549,7 +621,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_open_media_->setObjectName("toolBlockButton");
     btn_open_media_->setCursor(Qt::PointingHandCursor);
     btn_open_media_->setIconSize(QSize(18, 18));
-    btn_open_media_->setToolTip("打开媒体文件");
+    btn_open_media_->setToolTip("打开媒体");
     btn_recent_history_ = new QPushButton("历史", this);
     btn_recent_history_->setObjectName("controlButtonWide");
     btn_recent_history_->setCursor(Qt::PointingHandCursor);
@@ -583,6 +655,10 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_playback_rate_->setObjectName("controlButtonWide");
     btn_playback_rate_->setCursor(Qt::PointingHandCursor);
     btn_playback_rate_->setToolTip("播放速度");
+    open_media_menu_ = new QMenu(this);
+    open_media_menu_->setStyleSheet(popup_menu_stylesheet());
+    QAction *open_file_action = open_media_menu_->addAction("打开文件");
+    QAction *open_folder_action = open_media_menu_->addAction("打开文件夹");
     playback_rate_menu_ = new QMenu(this);
     playback_rate_menu_->setStyleSheet(popup_menu_stylesheet());
     recent_history_menu_ = new QMenu(this);
@@ -624,7 +700,9 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
             {
                 lbl_time_->setText(QString("%1 / %2").arg(format_time(static_cast<double>(value)), format_time(duration_)));
             });
-    connect(btn_open_media_, &QPushButton::clicked, this, &main_window::on_open_file);
+    connect(open_file_action, &QAction::triggered, this, &main_window::on_open_file);
+    connect(open_folder_action, &QAction::triggered, this, &main_window::on_open_folder);
+    connect(btn_open_media_, &QPushButton::clicked, this, &main_window::show_open_media_menu);
     connect(btn_recent_history_, &QPushButton::clicked, this, &main_window::show_recent_history_menu);
     connect(btn_screenshot_, &QPushButton::clicked, this, &main_window::on_save_screenshot);
     connect(btn_video_fullscreen_, &QPushButton::clicked, this, &main_window::on_toggle_fullscreen);
@@ -1626,6 +1704,16 @@ void main_window::show_recent_history_menu()
     recent_history_menu_->popup(btn_recent_history_->mapToGlobal(QPoint(0, btn_recent_history_->height())));
 }
 
+void main_window::show_open_media_menu()
+{
+    if (btn_open_media_ == nullptr || open_media_menu_ == nullptr)
+    {
+        return;
+    }
+
+    open_media_menu_->popup(btn_open_media_->mapToGlobal(QPoint(0, btn_open_media_->height())));
+}
+
 void main_window::show_playback_rate_menu()
 {
     if (btn_playback_rate_ == nullptr || playback_rate_menu_ == nullptr)
@@ -2283,6 +2371,32 @@ void main_window::on_open_file()
     open_files_into_playlist(active_playlist_id());
 }
 
+void main_window::on_open_folder()
+{
+    QWidget *dialog_parent = this;
+    if (is_video_fullscreen() && video_fullscreen_window_ != nullptr)
+    {
+        dialog_parent = video_fullscreen_window_;
+    }
+
+    const QString directory = QFileDialog::getExistingDirectory(dialog_parent, "打开媒体文件夹");
+    if (directory.isEmpty())
+    {
+        LOG_INFO("open folder cancelled");
+        return;
+    }
+
+    const QStringList files = collect_media_files_from_directory(directory);
+    if (files.isEmpty())
+    {
+        LOG_INFO("open folder found no media files");
+        return;
+    }
+
+    LOG_INFO("open folder selected {} media count {}", directory.toStdString(), files.size());
+    open_files_into_playlist(active_playlist_id(), files);
+}
+
 void main_window::open_files_into_playlist(const QString &playlist_id)
 {
     LOG_INFO("on open file clicked");
@@ -2296,7 +2410,7 @@ void main_window::open_files_into_playlist(const QString &playlist_id)
         dialog_parent,
         "打开媒体文件",
         "",
-        "Media Files (*.mp4 *.mkv *.avi *.mov *.flv *.webm *.mp3 *.flac *.wav *.aac *.ogg);;Video Files (*.mp4 *.mkv *.avi *.mov *.flv *.webm);;Audio Files (*.mp3 *.flac *.wav *.aac *.ogg);;All Files (*)");
+        media_file_dialog_filter());
     if (filenames.isEmpty())
     {
         LOG_INFO("open file cancelled");
