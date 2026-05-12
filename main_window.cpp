@@ -42,7 +42,7 @@ namespace
 constexpr const char *k_settings_org = "gyl30";
 constexpr const char *k_settings_app = "VideoPlayer";
 constexpr int k_resize_border_width = 8;
-constexpr int k_compact_control_bar_width = 1320;
+constexpr int k_compact_control_bar_width = 1000;
 constexpr int k_narrow_control_bar_width = 900;
 constexpr int k_playback_history_limit = 100;
 constexpr int k_resume_prompt_minimum_second = 10;
