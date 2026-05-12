@@ -19,6 +19,7 @@
 #include <QResizeEvent>
 #include <Qt>
 #include <QString>
+#include <cstdint>
 #include <thread>
 #include <memory>
 #include <functional>
@@ -206,6 +207,7 @@ class main_window : public QMainWindow
     int media_title_scroll_offset_ = 0;
     int last_saved_progress_second_ = -1;
     int current_playback_row_ = -1;
+    uint64_t playback_generation_ = 0;
     double playback_rate_ = 1.0;
     bool audio_only_mode_ = false;
     playlist_store playlist_store_;

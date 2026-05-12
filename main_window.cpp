@@ -3243,6 +3243,8 @@ void main_window::stop_play()
         sync_thread_.reset();
     }
 
+    ++playback_generation_;
+
     LOG_INFO("joining threads");
     if (demux_thread_.joinable())
     {
@@ -3299,6 +3301,7 @@ void main_window::stop_play()
 bool main_window::start_play(const std::string &filepath)
 {
     LOG_INFO("starting play for file {}", filepath);
+    const uint64_t playback_generation = ++playback_generation_;
     video_pkt_queue_ = std::make_unique<safe_queue<std::shared_ptr<media_packet>>>(100);
     audio_pkt_queue_ = std::make_unique<safe_queue<std::shared_ptr<media_packet>>>(100);
     video_frame_queue_ = std::make_unique<safe_queue<std::shared_ptr<media_frame>>>(16);
@@ -3377,7 +3380,18 @@ bool main_window::start_play(const std::string &filepath)
         sync_thread_ = std::make_unique<video_sync_thread>(
             video_frame_queue_.get(), video_pkt_queue_.get(), demuxer_->time_base(demuxer_->video_index()), clock_.get());
 
-        connect(sync_thread_.get(), &video_sync_thread::frame_ready, this, &main_window::on_video_frame_ready);
+        connect(sync_thread_.get(),
+                &video_sync_thread::frame_ready,
+                this,
+                [this, playback_generation](std::shared_ptr<media_frame> frame)
+                {
+                    if (playback_generation != playback_generation_)
+                    {
+                        return;
+                    }
+
+                    on_video_frame_ready(std::move(frame));
+                });
 
         sync_thread_->start();
     }
