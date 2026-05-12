@@ -3265,10 +3265,11 @@ void main_window::rebuild_control_rows(int layout_mode)
         tertiary_control_row_layout_->addWidget(btn_playback_rate_);
         tertiary_control_row_layout_->addWidget(lbl_vol_icon_low_);
         tertiary_control_row_layout_->addWidget(volume_meter_);
-        tertiary_control_row_layout_->addStretch(1);
+        tertiary_control_row_layout_->addSpacing(8);
         tertiary_control_row_layout_->addWidget(btn_open_media_);
         tertiary_control_row_layout_->addWidget(btn_video_fullscreen_);
         tertiary_control_row_layout_->addWidget(btn_playlist_);
+        tertiary_control_row_layout_->addStretch(1);
 
         secondary_control_row_widget_->show();
         tertiary_control_row_widget_->show();
@@ -3313,21 +3314,22 @@ void main_window::rebuild_control_rows(int layout_mode)
     lbl_time_->setMinimumWidth(210);
     set_button_sizes(QSize(44, 46), 46, QSize(56, 48), 22);
 
-    primary_control_row_layout_->addWidget(lbl_time_);
+    primary_control_row_layout_->addWidget(lbl_time_, 1);
     primary_control_row_layout_->addSpacing(16);
     primary_control_row_layout_->addWidget(btn_stop_);
     primary_control_row_layout_->addWidget(btn_backward_);
     primary_control_row_layout_->addWidget(btn_play_pause_);
     primary_control_row_layout_->addWidget(btn_forward_);
     primary_control_row_layout_->addWidget(btn_audio_only_);
-    primary_control_row_layout_->addStretch(1);
+    primary_control_row_layout_->addSpacing(16);
     primary_control_row_layout_->addWidget(btn_playback_rate_);
     primary_control_row_layout_->addWidget(lbl_vol_icon_low_);
     primary_control_row_layout_->addWidget(volume_meter_);
-    primary_control_row_layout_->addSpacing(12);
+    primary_control_row_layout_->addSpacing(8);
     primary_control_row_layout_->addWidget(btn_open_media_);
     primary_control_row_layout_->addWidget(btn_video_fullscreen_);
     primary_control_row_layout_->addWidget(btn_playlist_);
+    primary_control_row_layout_->addStretch(1);
     secondary_control_row_widget_->hide();
     tertiary_control_row_widget_->hide();
 }
