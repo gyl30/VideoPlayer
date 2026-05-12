@@ -2133,26 +2133,12 @@ void main_window::show_shortcuts_help()
         table->setRowHeight(row, 34);
     }
 
-    auto *button_row = new QWidget(body);
-    auto *button_layout = new QHBoxLayout(button_row);
-    button_layout->setContentsMargins(16, 12, 16, 16);
-    button_layout->setSpacing(0);
-
-    auto *btn_ok = new QPushButton("关闭", button_row);
-    btn_ok->setObjectName("dialogActionButton");
-    btn_ok->setCursor(Qt::PointingHandCursor);
-
-    button_layout->addStretch(1);
-    button_layout->addWidget(btn_ok);
-
     body_layout->addWidget(table, 1);
-    body_layout->addWidget(button_row);
 
     main_layout->addWidget(title_bar);
     main_layout->addWidget(body, 1);
 
     connect(btn_close, &QPushButton::clicked, &dialog, &QDialog::reject);
-    connect(btn_ok, &QPushButton::clicked, &dialog, &QDialog::accept);
 
     if (dialog_parent != nullptr)
     {
