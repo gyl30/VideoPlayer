@@ -42,7 +42,7 @@ namespace
 constexpr const char *k_settings_org = "gyl30";
 constexpr const char *k_settings_app = "VideoPlayer";
 constexpr int k_resize_border_width = 8;
-constexpr int k_compact_control_bar_width = 1240;
+constexpr int k_compact_control_bar_width = 1320;
 constexpr int k_narrow_control_bar_width = 900;
 constexpr int k_playback_history_limit = 100;
 constexpr int k_resume_prompt_minimum_second = 10;
@@ -3211,10 +3211,45 @@ void main_window::rebuild_control_rows(int layout_mode)
         delete tertiary_control_row_layout_->takeAt(0);
     }
 
+    auto set_button_sizes = [this](const QSize &control_size, int wide_height, const QSize &tool_size, int time_font_size)
+    {
+        for (QPushButton *button : {btn_stop_, btn_backward_, btn_play_pause_, btn_forward_})
+        {
+            if (button != nullptr)
+            {
+                button->setFixedSize(control_size);
+            }
+        }
+
+        for (QPushButton *button : {btn_audio_only_, btn_playback_rate_})
+        {
+            if (button != nullptr)
+            {
+                button->setFixedHeight(wide_height);
+            }
+        }
+
+        for (QPushButton *button : {btn_open_media_, btn_video_fullscreen_, btn_playlist_})
+        {
+            if (button != nullptr)
+            {
+                button->setFixedSize(tool_size);
+            }
+        }
+
+        QFont time_font = lbl_time_->font();
+        time_font.setPointSize(time_font_size);
+        lbl_time_->setFont(time_font);
+    };
+
     if (layout_mode == 2)
     {
-        control_panel_->setFixedHeight(182);
+        control_panel_->setFixedHeight(164);
+        primary_control_row_layout_->setSpacing(8);
+        secondary_control_row_layout_->setSpacing(6);
+        tertiary_control_row_layout_->setSpacing(6);
         lbl_time_->setMinimumWidth(0);
+        set_button_sizes(QSize(40, 40), 38, QSize(46, 40), 18);
 
         primary_control_row_layout_->addStretch(1);
         primary_control_row_layout_->addWidget(btn_stop_);
@@ -3242,8 +3277,12 @@ void main_window::rebuild_control_rows(int layout_mode)
 
     if (layout_mode == 1)
     {
-        control_panel_->setFixedHeight(140);
+        control_panel_->setFixedHeight(128);
+        primary_control_row_layout_->setSpacing(8);
+        secondary_control_row_layout_->setSpacing(6);
+        tertiary_control_row_layout_->setSpacing(6);
         lbl_time_->setMinimumWidth(180);
+        set_button_sizes(QSize(40, 40), 38, QSize(46, 40), 19);
 
         primary_control_row_layout_->addStretch(1);
         primary_control_row_layout_->addWidget(btn_stop_);
@@ -3268,10 +3307,14 @@ void main_window::rebuild_control_rows(int layout_mode)
     }
 
     control_panel_->setFixedHeight(104);
+    primary_control_row_layout_->setSpacing(10);
+    secondary_control_row_layout_->setSpacing(8);
+    tertiary_control_row_layout_->setSpacing(8);
     lbl_time_->setMinimumWidth(210);
+    set_button_sizes(QSize(44, 46), 46, QSize(56, 48), 22);
 
     primary_control_row_layout_->addWidget(lbl_time_);
-    primary_control_row_layout_->addStretch(1);
+    primary_control_row_layout_->addSpacing(16);
     primary_control_row_layout_->addWidget(btn_stop_);
     primary_control_row_layout_->addWidget(btn_backward_);
     primary_control_row_layout_->addWidget(btn_play_pause_);
