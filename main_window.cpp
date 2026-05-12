@@ -203,6 +203,43 @@ QStringList collect_media_files_from_directory(const QString &directory_path)
     return files;
 }
 
+QStringList load_playlist_file_paths(const QString &playlist_path)
+{
+    QFile file(playlist_path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        return {};
+    }
+
+    const QString content = QString::fromUtf8(file.readAll());
+    const QStringList lines = content.split(QRegularExpression(QStringLiteral("[\r\n]")), Qt::SkipEmptyParts);
+    const QDir base_dir = QFileInfo(playlist_path).dir();
+
+    QStringList files;
+    QSet<QString> seen_paths;
+    for (const QString &line : lines)
+    {
+        const QString trimmed = line.trimmed();
+        if (trimmed.isEmpty() || trimmed.startsWith('#'))
+        {
+            continue;
+        }
+
+        const QString candidate_path = QDir::isRelativePath(trimmed) ? base_dir.absoluteFilePath(trimmed) : trimmed;
+        const QString normalized_path = normalize_media_path(candidate_path);
+        const QFileInfo file_info(normalized_path);
+        if (!file_info.exists() || !is_supported_media_file(file_info) || seen_paths.contains(normalized_path))
+        {
+            continue;
+        }
+
+        seen_paths.insert(normalized_path);
+        files.append(normalized_path);
+    }
+
+    return files;
+}
+
 QStringList local_media_files_from_urls(const QList<QUrl> &urls)
 {
     QStringList files;
@@ -659,6 +696,11 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     open_media_menu_->setStyleSheet(popup_menu_stylesheet());
     QAction *open_file_action = open_media_menu_->addAction("打开文件");
     QAction *open_folder_action = open_media_menu_->addAction("打开文件夹");
+    QAction *import_playlist_action = open_media_menu_->addAction("导入播放列表");
+    playlist_manage_menu_ = new QMenu(this);
+    playlist_manage_menu_->setStyleSheet(popup_menu_stylesheet());
+    QAction *manage_playlist_action = playlist_manage_menu_->addAction("管理播放列表");
+    QAction *export_playlist_action = playlist_manage_menu_->addAction("导出当前播放列表");
     playback_rate_menu_ = new QMenu(this);
     playback_rate_menu_->setStyleSheet(popup_menu_stylesheet());
     recent_history_menu_ = new QMenu(this);
@@ -702,6 +744,9 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
             });
     connect(open_file_action, &QAction::triggered, this, &main_window::on_open_file);
     connect(open_folder_action, &QAction::triggered, this, &main_window::on_open_folder);
+    connect(import_playlist_action, &QAction::triggered, this, &main_window::on_import_playlist);
+    connect(manage_playlist_action, &QAction::triggered, this, [this]() { open_playlist_management_dialog(); });
+    connect(export_playlist_action, &QAction::triggered, this, &main_window::on_export_playlist);
     connect(btn_open_media_, &QPushButton::clicked, this, &main_window::show_open_media_menu);
     connect(btn_recent_history_, &QPushButton::clicked, this, &main_window::show_recent_history_menu);
     connect(btn_screenshot_, &QPushButton::clicked, this, &main_window::on_save_screenshot);
@@ -710,7 +755,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     connect(btn_audio_only_, &QPushButton::toggled, this, &main_window::on_audio_only_toggled);
     connect(btn_playback_rate_, &QPushButton::clicked, this, &main_window::show_playback_rate_menu);
     connect(btn_playlist_create_, &QPushButton::clicked, this, &main_window::on_create_playlist);
-    connect(btn_playlist_manage_, &QPushButton::clicked, this, [this]() { open_playlist_management_dialog(); });
+    connect(btn_playlist_manage_, &QPushButton::clicked, this, &main_window::show_playlist_manage_menu);
     connect(playlist_view_, &QTreeWidget::itemDoubleClicked, this, &main_window::on_playlist_item_activated);
     connect(playlist_view_,
             &QTreeWidget::itemExpanded,
@@ -1714,6 +1759,16 @@ void main_window::show_open_media_menu()
     open_media_menu_->popup(btn_open_media_->mapToGlobal(QPoint(0, btn_open_media_->height())));
 }
 
+void main_window::show_playlist_manage_menu()
+{
+    if (btn_playlist_manage_ == nullptr || playlist_manage_menu_ == nullptr)
+    {
+        return;
+    }
+
+    playlist_manage_menu_->popup(btn_playlist_manage_->mapToGlobal(QPoint(0, btn_playlist_manage_->height())));
+}
+
 void main_window::show_playback_rate_menu()
 {
     if (btn_playback_rate_ == nullptr || playback_rate_menu_ == nullptr)
@@ -2397,6 +2452,90 @@ void main_window::on_open_folder()
     open_files_into_playlist(active_playlist_id(), files);
 }
 
+void main_window::on_import_playlist()
+{
+    QWidget *dialog_parent = this;
+    if (is_video_fullscreen() && video_fullscreen_window_ != nullptr)
+    {
+        dialog_parent = video_fullscreen_window_;
+    }
+
+    const QString playlist_path = QFileDialog::getOpenFileName(
+        dialog_parent,
+        "导入播放列表",
+        "",
+        "Playlist Files (*.m3u *.m3u8)");
+    if (playlist_path.isEmpty())
+    {
+        LOG_INFO("import playlist cancelled");
+        return;
+    }
+
+    const QStringList files = load_playlist_file_paths(playlist_path);
+    if (files.isEmpty())
+    {
+        LOG_INFO("import playlist found no valid media files");
+        return;
+    }
+
+    LOG_INFO("import playlist selected {} media count {}", playlist_path.toStdString(), files.size());
+    open_files_into_playlist(active_playlist_id(), files);
+}
+
+void main_window::on_export_playlist()
+{
+    const playlist_entry *playlist = playlist_store_.playlist_by_id(active_playlist_id());
+    if (playlist == nullptr || playlist->paths.isEmpty())
+    {
+        LOG_INFO("export playlist skipped because current playlist is empty");
+        return;
+    }
+
+    QWidget *dialog_parent = this;
+    if (is_video_fullscreen() && video_fullscreen_window_ != nullptr)
+    {
+        dialog_parent = video_fullscreen_window_;
+    }
+
+    QString default_name = playlist->name.trimmed();
+    if (default_name.isEmpty())
+    {
+        default_name = "playlist";
+    }
+
+    QString output_path = QFileDialog::getSaveFileName(
+        dialog_parent,
+        "导出播放列表",
+        default_name + ".m3u8",
+        "Playlist Files (*.m3u *.m3u8)");
+    if (output_path.isEmpty())
+    {
+        LOG_INFO("export playlist cancelled");
+        return;
+    }
+
+    if (!output_path.endsWith(".m3u", Qt::CaseInsensitive) && !output_path.endsWith(".m3u8", Qt::CaseInsensitive))
+    {
+        output_path += ".m3u8";
+    }
+
+    QFile file(output_path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+    {
+        LOG_ERROR("failed to open playlist file for writing {}", output_path.toStdString());
+        return;
+    }
+
+    file.write("#EXTM3U\n");
+    for (const QString &path : playlist->paths)
+    {
+        file.write(path.toUtf8());
+        file.write("\n");
+    }
+
+    LOG_INFO("playlist exported {} items {}", output_path.toStdString(), playlist->paths.size());
+}
+
 void main_window::open_files_into_playlist(const QString &playlist_id)
 {
     LOG_INFO("on open file clicked");
@@ -2532,7 +2671,7 @@ void main_window::update_playlist_header_buttons()
     if (btn_playlist_manage_ != nullptr)
     {
         btn_playlist_manage_->setEnabled(playlist_store_.playlist_count() > 0);
-        btn_playlist_manage_->setToolTip("管理播放列表");
+        btn_playlist_manage_->setToolTip("播放列表操作");
     }
 }
 
