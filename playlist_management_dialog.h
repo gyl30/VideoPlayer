@@ -2,6 +2,7 @@
 #define PLAYLIST_MANAGEMENT_DIALOG_H
 
 #include <QDialog>
+#include <QHash>
 #include <QPoint>
 #include "playlist_store.h"
 
@@ -10,6 +11,7 @@ class QListWidget;
 class QListWidgetItem;
 class QPushButton;
 class QString;
+class QTimer;
 class QWidget;
 
 class playlist_management_dialog : public QDialog
@@ -43,6 +45,10 @@ class playlist_management_dialog : public QDialog
     QString current_playlist_id(QListWidget *playlist_list) const;
     QList<int> selected_source_rows() const;
     void update_action_buttons();
+    void install_auto_hide_scrollbar(QListWidget *list);
+    void set_list_scrollbar_visible(QListWidget *list, bool visible);
+    void schedule_hide_list_scrollbar(QListWidget *list);
+    QListWidget *list_for_scrollbar_object(const QObject *watched) const;
 
    private:
     playlist_store temp_store_;
@@ -60,6 +66,7 @@ class playlist_management_dialog : public QDialog
     QPushButton *btn_apply_ = nullptr;
     QPushButton *btn_cancel_ = nullptr;
     QWidget *title_bar_ = nullptr;
+    QHash<QListWidget *, QTimer *> scrollbar_hide_timers_;
 
     bool dragging_title_bar_ = false;
     QPoint drag_offset_;

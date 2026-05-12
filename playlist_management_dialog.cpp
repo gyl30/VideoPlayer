@@ -7,6 +7,8 @@
 #include <QListWidgetItem>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QScrollBar>
+#include <QTimer>
 #include <QVBoxLayout>
 #include "playlist_name_dialog.h"
 #include "playlist_management_dialog.h"
@@ -189,6 +191,22 @@ const playlist_store &playlist_management_dialog::result_store() const { return 
 
 bool playlist_management_dialog::eventFilter(QObject *watched, QEvent *event)
 {
+    if (QListWidget *list = list_for_scrollbar_object(watched); list != nullptr)
+    {
+        if (event->type() == QEvent::Enter || event->type() == QEvent::MouseMove)
+        {
+            if (QTimer *timer = scrollbar_hide_timers_.value(list, nullptr); timer != nullptr)
+            {
+                timer->stop();
+            }
+            set_list_scrollbar_visible(list, true);
+        }
+        else if (event->type() == QEvent::Leave)
+        {
+            schedule_hide_list_scrollbar(list);
+        }
+    }
+
     if (watched != title_bar_)
     {
         return QDialog::eventFilter(watched, event);
@@ -363,7 +381,7 @@ void playlist_management_dialog::setup_ui()
 
     auto *body = new QWidget(this);
     auto *main_layout = new QHBoxLayout(body);
-    main_layout->setContentsMargins(14, 14, 14, 14);
+    main_layout->setContentsMargins(0, 0, 0, 0);
     main_layout->setSpacing(12);
 
     auto *source_panel = new QWidget(this);
@@ -381,6 +399,7 @@ void playlist_management_dialog::setup_ui()
     source_playlists_list_ = new QListWidget(source_panel);
     source_playlists_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     source_playlists_list_->setMaximumHeight(160);
+    install_auto_hide_scrollbar(source_playlists_list_);
     source_layout->addWidget(source_playlists_list_);
 
     auto *playlist_button_row = new QWidget(source_panel);
@@ -404,6 +423,7 @@ void playlist_management_dialog::setup_ui()
     source_songs_list_ = new QListWidget(source_panel);
     source_songs_list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     source_songs_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    install_auto_hide_scrollbar(source_songs_list_);
     source_layout->addWidget(source_songs_list_, 1);
 
     auto *action_panel = new QWidget(this);
@@ -464,6 +484,7 @@ void playlist_management_dialog::setup_ui()
     target_playlists_list_ = new QListWidget(target_panel);
     target_playlists_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     target_playlists_list_->setMaximumHeight(160);
+    install_auto_hide_scrollbar(target_playlists_list_);
     target_layout->addWidget(target_playlists_list_);
 
     auto *target_file_label = new QLabel("目标文件列表", target_panel);
@@ -475,6 +496,7 @@ void playlist_management_dialog::setup_ui()
     target_songs_list_ = new QListWidget(target_panel);
     target_songs_list_->setSelectionMode(QAbstractItemView::NoSelection);
     target_songs_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    install_auto_hide_scrollbar(target_songs_list_);
     target_layout->addWidget(target_songs_list_, 1);
 
     main_layout->addWidget(source_panel, 2);
@@ -614,4 +636,103 @@ void playlist_management_dialog::update_action_buttons()
     btn_copy_->setEnabled(has_selected_rows && different_playlist);
     btn_move_->setEnabled(has_selected_rows && different_playlist);
     btn_remove_->setEnabled(has_selected_rows && has_source_playlist);
+}
+
+void playlist_management_dialog::install_auto_hide_scrollbar(QListWidget *list)
+{
+    if (list == nullptr)
+    {
+        return;
+    }
+
+    auto *timer = new QTimer(this);
+    timer->setSingleShot(true);
+    timer->setInterval(1200);
+    connect(timer,
+            &QTimer::timeout,
+            this,
+            [this, list]()
+            {
+                if (list == nullptr)
+                {
+                    return;
+                }
+
+                const QRect list_rect(QPoint(0, 0), list->size());
+                const QPoint global_pos = QCursor::pos();
+                const QPoint local_pos = list->mapFromGlobal(global_pos);
+                const bool cursor_in_list = list_rect.contains(local_pos);
+
+                QScrollBar *scrollbar = list->verticalScrollBar();
+                const bool cursor_in_scrollbar =
+                    scrollbar != nullptr && scrollbar->isVisible() &&
+                    QRect(QPoint(0, 0), scrollbar->size()).contains(scrollbar->mapFromGlobal(global_pos));
+
+                if (!cursor_in_list && !cursor_in_scrollbar)
+                {
+                    set_list_scrollbar_visible(list, false);
+                }
+            });
+
+    scrollbar_hide_timers_.insert(list, timer);
+
+    list->installEventFilter(this);
+    if (list->viewport() != nullptr)
+    {
+        list->viewport()->installEventFilter(this);
+    }
+    if (list->verticalScrollBar() != nullptr)
+    {
+        list->verticalScrollBar()->installEventFilter(this);
+    }
+
+    set_list_scrollbar_visible(list, false);
+}
+
+void playlist_management_dialog::set_list_scrollbar_visible(QListWidget *list, bool visible)
+{
+    if (list == nullptr)
+    {
+        return;
+    }
+
+    QScrollBar *scrollbar = list->verticalScrollBar();
+    if (scrollbar == nullptr)
+    {
+        return;
+    }
+
+    const bool should_show = visible && scrollbar->maximum() > 0;
+    scrollbar->setVisible(should_show);
+}
+
+void playlist_management_dialog::schedule_hide_list_scrollbar(QListWidget *list)
+{
+    if (list == nullptr)
+    {
+        return;
+    }
+
+    if (QTimer *timer = scrollbar_hide_timers_.value(list, nullptr); timer != nullptr)
+    {
+        timer->start();
+    }
+}
+
+QListWidget *playlist_management_dialog::list_for_scrollbar_object(const QObject *watched) const
+{
+    if (watched == nullptr)
+    {
+        return nullptr;
+    }
+
+    for (QListWidget *list : scrollbar_hide_timers_.keys())
+    {
+        if (watched == list || watched == list->viewport() || watched == list->verticalScrollBar())
+        {
+            return list;
+        }
+    }
+
+    return nullptr;
 }
