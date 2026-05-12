@@ -559,7 +559,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     playlist_view_->setExpandsOnDoubleClick(false);
     playlist_view_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     playlist_view_->setSelectionMode(QAbstractItemView::ExtendedSelection);
-    playlist_view_->setContextMenuPolicy(Qt::NoContextMenu);
+    playlist_view_->setContextMenuPolicy(Qt::CustomContextMenu);
     playlist_view_->setAcceptDrops(true);
     playlist_layout->addWidget(playlist_view_, 1);
     playlist_panel_->hide();
@@ -783,6 +783,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     connect(btn_playback_rate_, &QPushButton::clicked, this, &main_window::show_playback_rate_menu);
     connect(btn_playlist_create_, &QPushButton::clicked, this, &main_window::on_create_playlist);
     connect(btn_playlist_manage_, &QPushButton::clicked, this, &main_window::show_playlist_manage_menu);
+    connect(playlist_view_, &QTreeWidget::customContextMenuRequested, this, &main_window::show_playlist_context_menu);
     connect(playlist_view_, &QTreeWidget::itemDoubleClicked, this, &main_window::on_playlist_item_activated);
     connect(playlist_view_,
             &QTreeWidget::itemExpanded,
@@ -2179,6 +2180,89 @@ void main_window::show_playback_rate_menu()
     playback_rate_menu_->popup(btn_playback_rate_->mapToGlobal(QPoint(0, btn_playback_rate_->height())));
 }
 
+QString main_window::selected_media_target_playlist_id() const
+{
+    if (playlist_view_ != nullptr)
+    {
+        QTreeWidgetItem *current_item = playlist_view_->currentItem();
+        if (is_playlist_item(current_item) || is_playlist_file_item(current_item))
+        {
+            const QString playlist_id = playlist_id_for_item(current_item);
+            if (!playlist_id.isEmpty())
+            {
+                return playlist_id;
+            }
+        }
+
+        const QList<QTreeWidgetItem *> selected_items = playlist_view_->selectedItems();
+        for (QTreeWidgetItem *item : selected_items)
+        {
+            if (is_playlist_item(item) || is_playlist_file_item(item))
+            {
+                const QString playlist_id = playlist_id_for_item(item);
+                if (!playlist_id.isEmpty())
+                {
+                    return playlist_id;
+                }
+            }
+        }
+    }
+
+    return active_playlist_id();
+}
+
+void main_window::show_playlist_context_menu(const QPoint &position)
+{
+    if (playlist_view_ == nullptr)
+    {
+        return;
+    }
+
+    QTreeWidgetItem *item = playlist_view_->itemAt(position);
+    if (!is_playlist_item(item))
+    {
+        return;
+    }
+
+    playlist_view_->setCurrentItem(item);
+
+    const QString playlist_id = playlist_id_for_item(item);
+    if (playlist_id.isEmpty())
+    {
+        return;
+    }
+
+    QMenu menu(this);
+    menu.setStyleSheet(popup_menu_stylesheet());
+    QAction *open_file_action = menu.addAction("打开文件到该播放列表");
+    QAction *open_folder_action = menu.addAction("打开文件夹到该播放列表");
+    QAction *import_playlist_action = menu.addAction("导入播放列表到该播放列表");
+
+    connect(open_file_action,
+            &QAction::triggered,
+            this,
+            [this, playlist_id]()
+            {
+                open_files_into_playlist(playlist_id);
+            });
+    connect(open_folder_action,
+            &QAction::triggered,
+            this,
+            [this, playlist_id]()
+            {
+                open_folder_into_playlist(playlist_id);
+            });
+    connect(import_playlist_action,
+            &QAction::triggered,
+            this,
+            [this, playlist_id]()
+            {
+                import_playlist_into_playlist(playlist_id);
+            });
+
+    menu.exec(playlist_view_->viewport()->mapToGlobal(position));
+}
+
 void main_window::set_playback_rate(double rate)
 {
     const double normalized_rate = std::clamp(rate, 0.5, 2.0);
@@ -2824,10 +2908,15 @@ void main_window::exit_video_fullscreen()
 
 void main_window::on_open_file()
 {
-    open_files_into_playlist(active_playlist_id());
+    open_files_into_playlist(selected_media_target_playlist_id());
 }
 
 void main_window::on_open_folder()
+{
+    open_folder_into_playlist(selected_media_target_playlist_id());
+}
+
+void main_window::open_folder_into_playlist(const QString &playlist_id)
 {
     QWidget *dialog_parent = this;
     if (is_video_fullscreen() && video_fullscreen_window_ != nullptr)
@@ -2850,10 +2939,15 @@ void main_window::on_open_folder()
     }
 
     LOG_INFO("open folder selected {} media count {}", directory.toStdString(), files.size());
-    open_files_into_playlist(active_playlist_id(), files);
+    open_files_into_playlist(playlist_id, files);
 }
 
 void main_window::on_import_playlist()
+{
+    import_playlist_into_playlist(selected_media_target_playlist_id());
+}
+
+void main_window::import_playlist_into_playlist(const QString &playlist_id)
 {
     QWidget *dialog_parent = this;
     if (is_video_fullscreen() && video_fullscreen_window_ != nullptr)
@@ -2880,7 +2974,7 @@ void main_window::on_import_playlist()
     }
 
     LOG_INFO("import playlist selected {} media count {}", playlist_path.toStdString(), files.size());
-    open_files_into_playlist(active_playlist_id(), files);
+    open_files_into_playlist(playlist_id, files);
 }
 
 void main_window::on_export_playlist()

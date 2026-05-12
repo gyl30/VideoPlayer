@@ -106,6 +106,10 @@ class main_window : public QMainWindow
     void toggle_media_info_overlay();
     void update_media_info_overlay();
     void update_media_info_overlay_geometry();
+    QString selected_media_target_playlist_id() const;
+    void open_folder_into_playlist(const QString &playlist_id);
+    void import_playlist_into_playlist(const QString &playlist_id);
+    void show_playlist_context_menu(const QPoint &position);
     void update_playlist_item_icon(QTreeWidgetItem *item);
     void refresh_playlist_view();
     void set_active_playlist(const QString &playlist_id);
