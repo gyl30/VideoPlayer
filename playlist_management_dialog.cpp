@@ -81,18 +81,10 @@ playlist_management_dialog::playlist_management_dialog(const playlist_store &sto
         "    font-size: 14px;"
         "    font-weight: 700;"
         "}"
-        "QLabel#actionHint {"
-        "    color: #84a0b9;"
-        "    font-size: 12px;"
-        "}"
         "QLabel[sectionTitle=\"true\"] {"
         "    color: #eef4fa;"
         "    font-size: 14px;"
         "    font-weight: 700;"
-        "}"
-        "QLabel[sectionHint=\"true\"] {"
-        "    color: #87a3bd;"
-        "    font-size: 12px;"
         "}"
         "QListWidget {"
         "    background: #091523;"
@@ -392,9 +384,6 @@ void playlist_management_dialog::setup_ui()
     auto *source_playlist_label = new QLabel("源播放列表", source_panel);
     source_playlist_label->setProperty("sectionTitle", true);
     source_layout->addWidget(source_playlist_label);
-    auto *source_playlist_hint = new QLabel("选择需要调整的播放列表", source_panel);
-    source_playlist_hint->setProperty("sectionHint", true);
-    source_layout->addWidget(source_playlist_hint);
 
     source_playlists_list_ = new QListWidget(source_panel);
     source_playlists_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -417,9 +406,6 @@ void playlist_management_dialog::setup_ui()
     auto *source_file_label = new QLabel("源文件列表", source_panel);
     source_file_label->setProperty("sectionTitle", true);
     source_layout->addWidget(source_file_label);
-    auto *source_file_hint = new QLabel("可多选后复制、移动或移除", source_panel);
-    source_file_hint->setProperty("sectionHint", true);
-    source_layout->addWidget(source_file_hint);
     source_songs_list_ = new QListWidget(source_panel);
     source_songs_list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     source_songs_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -435,11 +421,7 @@ void playlist_management_dialog::setup_ui()
 
     auto *action_title = new QLabel("管理操作", action_panel);
     action_title->setObjectName("actionTitle");
-    auto *action_hint = new QLabel("修改会暂存在当前窗口，点击应用并返回后生效。", action_panel);
-    action_hint->setObjectName("actionHint");
-    action_hint->setWordWrap(true);
     action_layout->addWidget(action_title);
-    action_layout->addWidget(action_hint);
     action_layout->addSpacing(4);
 
     btn_copy_ = new QPushButton("复制到目标列表", action_panel);
@@ -477,9 +459,6 @@ void playlist_management_dialog::setup_ui()
     auto *target_playlist_label = new QLabel("目标播放列表", target_panel);
     target_playlist_label->setProperty("sectionTitle", true);
     target_layout->addWidget(target_playlist_label);
-    auto *target_playlist_hint = new QLabel("选择复制或移动到哪个列表", target_panel);
-    target_playlist_hint->setProperty("sectionHint", true);
-    target_layout->addWidget(target_playlist_hint);
 
     target_playlists_list_ = new QListWidget(target_panel);
     target_playlists_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -490,9 +469,6 @@ void playlist_management_dialog::setup_ui()
     auto *target_file_label = new QLabel("目标文件列表", target_panel);
     target_file_label->setProperty("sectionTitle", true);
     target_layout->addWidget(target_file_label);
-    auto *target_file_hint = new QLabel("这里用于预览目标列表的当前内容", target_panel);
-    target_file_hint->setProperty("sectionHint", true);
-    target_layout->addWidget(target_file_hint);
     target_songs_list_ = new QListWidget(target_panel);
     target_songs_list_->setSelectionMode(QAbstractItemView::NoSelection);
     target_songs_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
