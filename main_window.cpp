@@ -666,15 +666,12 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_open_media_->setCursor(Qt::PointingHandCursor);
     btn_open_media_->setIconSize(QSize(18, 18));
     btn_open_media_->setToolTip("打开媒体");
-    btn_recent_history_ = new QPushButton("历史", this);
-    btn_recent_history_->setObjectName("controlButtonWide");
-    btn_recent_history_->setCursor(Qt::PointingHandCursor);
-    btn_recent_history_->setToolTip("最近播放");
     btn_screenshot_ = new QPushButton(QIcon(":/icons/camera-fill.svg"), QString(), this);
     btn_screenshot_->setObjectName("toolBlockButton");
     btn_screenshot_->setCursor(Qt::PointingHandCursor);
     btn_screenshot_->setIconSize(QSize(18, 18));
     btn_screenshot_->setToolTip("保存当前画面");
+    btn_screenshot_->hide();
     btn_video_fullscreen_ = new QPushButton(QIcon(":/icons/fullscreen-enter.svg"), QString(), this);
     btn_video_fullscreen_->setObjectName("toolBlockButton");
     btn_video_fullscreen_->setCursor(Qt::PointingHandCursor);
@@ -687,6 +684,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_sequential_playback_->setCheckable(true);
     btn_sequential_playback_->setChecked(false);
     btn_sequential_playback_->setToolTip("播放结束后自动播放下一项");
+    btn_sequential_playback_->hide();
 
     btn_audio_only_ = new QPushButton("仅音频", this);
     btn_audio_only_->setObjectName("controlButtonWide");
@@ -755,7 +753,6 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     connect(manage_playlist_action, &QAction::triggered, this, [this]() { open_playlist_management_dialog(); });
     connect(export_playlist_action, &QAction::triggered, this, &main_window::on_export_playlist);
     connect(btn_open_media_, &QPushButton::clicked, this, &main_window::show_open_media_menu);
-    connect(btn_recent_history_, &QPushButton::clicked, this, &main_window::show_recent_history_menu);
     connect(btn_screenshot_, &QPushButton::clicked, this, &main_window::on_save_screenshot);
     connect(btn_video_fullscreen_, &QPushButton::clicked, this, &main_window::on_toggle_fullscreen);
     connect(btn_playlist_, &QPushButton::clicked, this, &main_window::on_toggle_playlist);
@@ -796,7 +793,6 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     install_playback_shortcuts(this);
     restore_persistent_state();
     update_volume_icon(volume_meter_ != nullptr ? volume_meter_->value() : 80);
-    update_recent_history_button();
     update_fullscreen_button();
     update_screenshot_button();
     update_playlist_buttons();
@@ -1557,6 +1553,45 @@ void main_window::install_playback_shortcuts(QWidget *target)
                          LOG_INFO("key escape pressed in fullscreen");
                          on_toggle_fullscreen();
                      });
+    install_shortcut(QKeySequence(Qt::CTRL | Qt::Key_H),
+                     [this]()
+                     {
+                         LOG_INFO("key recent history shortcut pressed");
+                         show_recent_history_menu();
+                     });
+    install_shortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S),
+                     [this]()
+                     {
+                         LOG_INFO("key screenshot shortcut pressed");
+                         if (audio_only_mode_ || video_widget_ == nullptr || !video_widget_->has_frame())
+                         {
+                             QWidget *tooltip_parent = is_video_fullscreen() && video_fullscreen_window_ != nullptr ? video_fullscreen_window_ : this;
+                             QToolTip::showText(QCursor::pos(), "当前没有可截图的视频画面", tooltip_parent);
+                             return;
+                         }
+
+                         on_save_screenshot();
+                     });
+    install_shortcut(QKeySequence(Qt::CTRL | Qt::Key_L),
+                     [this]()
+                     {
+                         if (btn_sequential_playback_ == nullptr)
+                         {
+                             return;
+                         }
+
+                         btn_sequential_playback_->setChecked(!btn_sequential_playback_->isChecked());
+                         QWidget *tooltip_parent = is_video_fullscreen() && video_fullscreen_window_ != nullptr ? video_fullscreen_window_ : this;
+                         QToolTip::showText(QCursor::pos(),
+                                            btn_sequential_playback_->isChecked() ? "已开启顺播" : "已关闭顺播",
+                                            tooltip_parent);
+                     });
+    install_shortcut(QKeySequence(QStringLiteral("?")),
+                     [this]()
+                     {
+                         LOG_INFO("key shortcuts help pressed");
+                         show_shortcuts_help();
+                     });
 
     target->setProperty("playbackShortcutsInstalled", true);
 }
@@ -1704,22 +1739,9 @@ void main_window::update_playback_rate_button()
     }
 }
 
-void main_window::update_recent_history_button()
-{
-    if (btn_recent_history_ == nullptr)
-    {
-        return;
-    }
-
-    QSettings settings(k_settings_org, k_settings_app);
-    const bool has_history = !load_playback_history(settings, 1).isEmpty();
-    btn_recent_history_->setEnabled(has_history);
-    btn_recent_history_->setToolTip(has_history ? "最近播放" : "暂无播放历史");
-}
-
 void main_window::show_recent_history_menu()
 {
-    if (btn_recent_history_ == nullptr || recent_history_menu_ == nullptr)
+    if (recent_history_menu_ == nullptr)
     {
         return;
     }
@@ -1751,9 +1773,51 @@ void main_window::show_recent_history_menu()
                 open_files_into_playlist(active_playlist_id(), QStringList{path});
             });
         }
+
+        recent_history_menu_->addSeparator();
+        QAction *clear_action = recent_history_menu_->addAction("清空播放历史");
+        connect(clear_action, &QAction::triggered, this, &main_window::clear_recent_history);
     }
 
-    recent_history_menu_->popup(btn_recent_history_->mapToGlobal(QPoint(0, btn_recent_history_->height())));
+    QWidget *menu_parent = is_video_fullscreen() && video_fullscreen_window_ != nullptr ? video_fullscreen_window_ : this;
+    const QSize menu_size = recent_history_menu_->sizeHint();
+    const int x = std::max(0, (menu_parent->width() - menu_size.width()) / 2);
+    const int y = title_bar_ != nullptr ? title_bar_->height() + 8 : 8;
+    recent_history_menu_->popup(menu_parent->mapToGlobal(QPoint(x, y)));
+}
+
+void main_window::clear_recent_history()
+{
+    QSettings settings(k_settings_org, k_settings_app);
+    const QStringList order = settings.value("history/order").toStringList();
+    for (const QString &path : order)
+    {
+        settings.remove(playback_history_entry_group_key(path));
+        settings.remove(playback_position_key(path));
+    }
+    settings.remove("history/order");
+}
+
+void main_window::show_shortcuts_help()
+{
+    QWidget *dialog_parent = is_video_fullscreen() && video_fullscreen_window_ != nullptr ? video_fullscreen_window_ : this;
+
+    QMessageBox message_box(dialog_parent);
+    message_box.setWindowTitle("快捷键说明");
+    message_box.setIcon(QMessageBox::Information);
+    message_box.setTextFormat(Qt::PlainText);
+    message_box.setText(
+        "Ctrl+O    打开文件\n"
+        "Ctrl+H    最近播放\n"
+        "Ctrl+Shift+S    截图\n"
+        "Ctrl+L    顺播开关\n"
+        "?    显示快捷键说明\n"
+        "Space    播放/暂停\n"
+        "Left / Right    快退 / 快进 5 秒\n"
+        "Up / Down    音量加 / 减\n"
+        "F / F11    切换全屏\n"
+        "Esc    退出全屏");
+    message_box.exec();
 }
 
 void main_window::show_open_media_menu()
@@ -2247,7 +2311,6 @@ void main_window::record_playback_history_open(const QString &path)
     settings.setValue(entry_group + "/title", title);
     settings.setValue(entry_group + "/duration", static_cast<int>(duration_));
     settings.setValue(entry_group + "/last_played_at", QDateTime::currentDateTime().toString(Qt::ISODate));
-    update_recent_history_button();
 }
 
 void main_window::save_playback_history_entry(int current_second)
@@ -2267,7 +2330,6 @@ void main_window::save_playback_history_entry(int current_second)
     settings.setValue(entry_group + "/duration", static_cast<int>(duration_));
     settings.setValue(entry_group + "/position", current_second);
     settings.setValue(entry_group + "/last_played_at", QDateTime::currentDateTime().toString(Qt::ISODate));
-    update_recent_history_button();
 }
 
 void main_window::save_current_playback_progress(bool force)
@@ -2743,16 +2805,13 @@ void main_window::rebuild_control_rows(int layout_mode)
 
         secondary_control_row_layout_->addWidget(lbl_time_, 1);
         secondary_control_row_layout_->addSpacing(8);
-        secondary_control_row_layout_->addWidget(btn_sequential_playback_);
         secondary_control_row_layout_->addWidget(btn_audio_only_);
 
         tertiary_control_row_layout_->addWidget(btn_playback_rate_);
-        tertiary_control_row_layout_->addWidget(btn_recent_history_);
         tertiary_control_row_layout_->addWidget(lbl_vol_icon_low_);
         tertiary_control_row_layout_->addWidget(volume_meter_);
         tertiary_control_row_layout_->addStretch(1);
         tertiary_control_row_layout_->addWidget(btn_open_media_);
-        tertiary_control_row_layout_->addWidget(btn_screenshot_);
         tertiary_control_row_layout_->addWidget(btn_video_fullscreen_);
         tertiary_control_row_layout_->addWidget(btn_playlist_);
 
@@ -2771,19 +2830,16 @@ void main_window::rebuild_control_rows(int layout_mode)
         primary_control_row_layout_->addWidget(btn_backward_);
         primary_control_row_layout_->addWidget(btn_play_pause_);
         primary_control_row_layout_->addWidget(btn_forward_);
-        primary_control_row_layout_->addWidget(btn_sequential_playback_);
         primary_control_row_layout_->addWidget(btn_audio_only_);
         primary_control_row_layout_->addStretch(1);
 
         secondary_control_row_layout_->addWidget(lbl_time_);
         secondary_control_row_layout_->addStretch(1);
         secondary_control_row_layout_->addWidget(btn_playback_rate_);
-        secondary_control_row_layout_->addWidget(btn_recent_history_);
         secondary_control_row_layout_->addWidget(lbl_vol_icon_low_);
         secondary_control_row_layout_->addWidget(volume_meter_);
         secondary_control_row_layout_->addSpacing(12);
         secondary_control_row_layout_->addWidget(btn_open_media_);
-        secondary_control_row_layout_->addWidget(btn_screenshot_);
         secondary_control_row_layout_->addWidget(btn_video_fullscreen_);
         secondary_control_row_layout_->addWidget(btn_playlist_);
         secondary_control_row_widget_->show();
@@ -2800,16 +2856,13 @@ void main_window::rebuild_control_rows(int layout_mode)
     primary_control_row_layout_->addWidget(btn_backward_);
     primary_control_row_layout_->addWidget(btn_play_pause_);
     primary_control_row_layout_->addWidget(btn_forward_);
-    primary_control_row_layout_->addWidget(btn_sequential_playback_);
     primary_control_row_layout_->addWidget(btn_audio_only_);
     primary_control_row_layout_->addStretch(1);
     primary_control_row_layout_->addWidget(btn_playback_rate_);
-    primary_control_row_layout_->addWidget(btn_recent_history_);
     primary_control_row_layout_->addWidget(lbl_vol_icon_low_);
     primary_control_row_layout_->addWidget(volume_meter_);
     primary_control_row_layout_->addSpacing(12);
     primary_control_row_layout_->addWidget(btn_open_media_);
-    primary_control_row_layout_->addWidget(btn_screenshot_);
     primary_control_row_layout_->addWidget(btn_video_fullscreen_);
     primary_control_row_layout_->addWidget(btn_playlist_);
     secondary_control_row_widget_->hide();
