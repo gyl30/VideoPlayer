@@ -27,6 +27,7 @@ class decoder
 
     void run();
     void stop();
+    [[nodiscard]] bool using_hardware_decode() const { return using_hw_decode_; }
 
    private:
     static AVPixelFormat get_hw_format(AVCodecContext *ctx, const AVPixelFormat *pix_fmts);

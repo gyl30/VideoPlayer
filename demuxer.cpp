@@ -58,7 +58,42 @@ void demuxer::set_seek_cb(std::function<void(double)> cb) { seek_cb_ = std::move
     return static_cast<double>(fmt_ctx_->duration) / AV_TIME_BASE;
 }
 
+QString demuxer::format_name() const
+{
+    if (fmt_ctx_ == nullptr || fmt_ctx_->iformat == nullptr || fmt_ctx_->iformat->name == nullptr)
+    {
+        return {};
+    }
+
+    return QString::fromUtf8(fmt_ctx_->iformat->name);
+}
+
 [[nodiscard]] bool demuxer::eof_reached() const { return eof_reached_.load(); }
+
+AVRational demuxer::frame_rate(int stream_index) const
+{
+    if (fmt_ctx_ == nullptr || stream_index < 0 || stream_index >= static_cast<int>(fmt_ctx_->nb_streams))
+    {
+        return AVRational{0, 1};
+    }
+
+    const AVStream *stream = fmt_ctx_->streams[stream_index];
+    if (stream == nullptr)
+    {
+        return AVRational{0, 1};
+    }
+
+    if (stream->avg_frame_rate.num > 0 && stream->avg_frame_rate.den > 0)
+    {
+        return stream->avg_frame_rate;
+    }
+    if (stream->r_frame_rate.num > 0 && stream->r_frame_rate.den > 0)
+    {
+        return stream->r_frame_rate;
+    }
+
+    return AVRational{0, 1};
+}
 
 void demuxer::seek(double seconds)
 {

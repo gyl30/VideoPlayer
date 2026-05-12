@@ -103,6 +103,9 @@ class main_window : public QMainWindow
     void show_playlist_manage_menu();
     void clear_recent_history();
     void show_shortcuts_help();
+    void toggle_media_info_overlay();
+    void update_media_info_overlay();
+    void update_media_info_overlay_geometry();
     void update_playlist_item_icon(QTreeWidgetItem *item);
     void refresh_playlist_view();
     void set_active_playlist(const QString &playlist_id);
@@ -166,6 +169,7 @@ class main_window : public QMainWindow
     QMenu *playback_rate_menu_ = nullptr;
 
     QFrame *video_frame_ = nullptr;
+    QFrame *media_info_overlay_ = nullptr;
     QFrame *playlist_panel_ = nullptr;
     QTreeWidget *playlist_view_ = nullptr;
     QWidget *control_panel_ = nullptr;
@@ -184,6 +188,7 @@ class main_window : public QMainWindow
 
     QSlider *slider_seek_ = nullptr;
     QLabel *lbl_time_ = nullptr;
+    QLabel *lbl_media_info_ = nullptr;
 
     QLabel *lbl_vol_icon_low_ = nullptr;
     class volume_meter *volume_meter_ = nullptr;
@@ -210,6 +215,7 @@ class main_window : public QMainWindow
     uint64_t playback_generation_ = 0;
     double playback_rate_ = 1.0;
     bool audio_only_mode_ = false;
+    bool media_info_overlay_enabled_ = false;
     playlist_store playlist_store_;
 
     bool playing_ = false;

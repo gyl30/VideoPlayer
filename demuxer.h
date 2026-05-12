@@ -5,6 +5,7 @@
 #include <vector>
 #include <atomic>
 #include <functional>
+#include <QString>
 #include "safe_queue.h"
 #include "media_objects.h"
 
@@ -30,7 +31,9 @@ class demuxer
     [[nodiscard]] int video_index() const;
     [[nodiscard]] int audio_index() const;
     [[nodiscard]] double duration() const;
+    [[nodiscard]] QString format_name() const;
     [[nodiscard]] AVRational time_base(int stream_index) const;
+    [[nodiscard]] AVRational frame_rate(int stream_index) const;
     [[nodiscard]] AVCodecParameters *codec_par(int stream_index) const;
     [[nodiscard]] bool eof_reached() const;
 

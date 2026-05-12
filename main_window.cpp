@@ -157,6 +157,25 @@ QString format_playback_rate_text(double rate)
     return text + "x";
 }
 
+QString format_frame_rate_text(AVRational frame_rate)
+{
+    if (frame_rate.num <= 0 || frame_rate.den <= 0)
+    {
+        return {};
+    }
+
+    QString text = QString::number(av_q2d(frame_rate), 'f', 2);
+    while (text.contains('.') && text.endsWith('0'))
+    {
+        text.chop(1);
+    }
+    if (text.endsWith('.'))
+    {
+        text.chop(1);
+    }
+    return text;
+}
+
 QString media_file_dialog_filter()
 {
     return QStringLiteral(
@@ -493,6 +512,24 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     video_widget_->setContextMenuPolicy(Qt::NoContextMenu);
     video_widget_->setAcceptDrops(true);
     video_frame_layout_->addWidget(video_widget_, 1);
+
+    media_info_overlay_ = new QFrame(video_widget_);
+    media_info_overlay_->setObjectName("mediaInfoOverlay");
+    media_info_overlay_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    media_info_overlay_->hide();
+
+    auto *media_info_layout = new QVBoxLayout(media_info_overlay_);
+    media_info_layout->setContentsMargins(12, 10, 12, 10);
+    media_info_layout->setSpacing(0);
+
+    lbl_media_info_ = new QLabel(media_info_overlay_);
+    lbl_media_info_->setObjectName("mediaInfoLabel");
+    lbl_media_info_->setTextFormat(Qt::RichText);
+    lbl_media_info_->setWordWrap(true);
+    lbl_media_info_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    lbl_media_info_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    media_info_layout->addWidget(lbl_media_info_);
+
     content_layout->addWidget(video_frame_, 1);
 
     playlist_panel_ = new QFrame(this);
@@ -1044,6 +1081,15 @@ void main_window::init_styles()
         "QOpenGLWidget#videoSurface {"
         "    background: #000000;"
         "}"
+        "QFrame#mediaInfoOverlay {"
+        "    background: rgba(7, 23, 40, 180);"
+        "    border: 1px solid rgba(131, 215, 255, 0.18);"
+        "    border-radius: 8px;"
+        "}"
+        "QLabel#mediaInfoLabel {"
+        "    color: #eef7ff;"
+        "    font-size: 12px;"
+        "}"
         "QFrame#playlistPanel {"
         "    background: #0b1929;"
         "    border-left: 1px solid #16385d;"
@@ -1306,6 +1352,11 @@ void main_window::closeEvent(QCloseEvent *event)
 
 bool main_window::eventFilter(QObject *watched, QEvent *event)
 {
+    if (watched == video_widget_ && event != nullptr && event->type() == QEvent::Resize)
+    {
+        update_media_info_overlay_geometry();
+    }
+
     if (handle_file_drop(watched, event))
     {
         return true;
@@ -1433,6 +1484,7 @@ void main_window::resizeEvent(QResizeEvent *event)
     QMainWindow::resizeEvent(event);
     update_media_title_text();
     update_control_layout_mode();
+    update_media_info_overlay_geometry();
 }
 
 void main_window::keyPressEvent(QKeyEvent *event)
@@ -1588,6 +1640,12 @@ void main_window::install_playback_shortcuts(QWidget *target)
                          QToolTip::showText(QCursor::pos(),
                                             btn_sequential_playback_->isChecked() ? "已开启顺播" : "已关闭顺播",
                                             tooltip_parent);
+                     });
+    install_shortcut(QKeySequence(Qt::CTRL | Qt::Key_I),
+                     [this]()
+                     {
+                         LOG_INFO("key media info shortcut pressed");
+                         toggle_media_info_overlay();
                      });
     install_shortcut(QKeySequence(QStringLiteral("?")),
                      [this]()
@@ -1801,6 +1859,135 @@ void main_window::clear_recent_history()
     settings.remove("history/order");
 }
 
+void main_window::toggle_media_info_overlay()
+{
+    media_info_overlay_enabled_ = !media_info_overlay_enabled_;
+    update_media_info_overlay();
+
+    QWidget *tooltip_parent = is_video_fullscreen() && video_fullscreen_window_ != nullptr ? video_fullscreen_window_ : this;
+    QToolTip::showText(QCursor::pos(), media_info_overlay_enabled_ ? "已显示媒体信息" : "已隐藏媒体信息", tooltip_parent);
+}
+
+void main_window::update_media_info_overlay()
+{
+    if (media_info_overlay_ == nullptr || lbl_media_info_ == nullptr || video_widget_ == nullptr)
+    {
+        return;
+    }
+
+    const bool has_video = demuxer_ != nullptr && demuxer_->video_index() >= 0;
+    const bool should_show = media_info_overlay_enabled_ && playing_ && has_video && !audio_only_mode_;
+    if (!should_show)
+    {
+        media_info_overlay_->hide();
+        return;
+    }
+
+    QStringList lines;
+
+    if (!current_media_path_.isEmpty())
+    {
+        lines.append(QString("<span style=\"color:#8ecfff;\">文件</span> %1").arg(QFileInfo(current_media_path_).fileName().toHtmlEscaped()));
+    }
+
+    if (demuxer_ != nullptr)
+    {
+        QString container_text = demuxer_->format_name();
+        if (!container_text.isEmpty())
+        {
+            container_text = container_text.toUpper();
+        }
+
+        QString duration_text;
+        if (duration_ > 0.0)
+        {
+            duration_text = format_time(duration_);
+        }
+
+        QStringList media_parts;
+        if (!container_text.isEmpty())
+        {
+            media_parts.append(container_text);
+        }
+        if (!duration_text.isEmpty())
+        {
+            media_parts.append(duration_text);
+        }
+        if (!media_parts.isEmpty())
+        {
+            lines.append(QString("<span style=\"color:#8ecfff;\">媒体</span> %1").arg(media_parts.join(" · ").toHtmlEscaped()));
+        }
+
+        const int video_index = demuxer_->video_index();
+        AVCodecParameters *video_par = demuxer_->codec_par(video_index);
+        if (video_par != nullptr)
+        {
+            QStringList video_parts;
+            video_parts.append(QString::fromUtf8(avcodec_get_name(video_par->codec_id)).toUpper());
+            if (video_par->width > 0 && video_par->height > 0)
+            {
+                video_parts.append(QString("%1x%2").arg(video_par->width).arg(video_par->height));
+            }
+
+            const QString fps_text = format_frame_rate_text(demuxer_->frame_rate(video_index));
+            if (!fps_text.isEmpty())
+            {
+                video_parts.append(fps_text + " fps");
+            }
+
+            if (video_decoder_ != nullptr)
+            {
+                video_parts.append(video_decoder_->using_hardware_decode() ? "硬解" : "软解");
+            }
+
+            lines.append(QString("<span style=\"color:#8ecfff;\">视频</span> %1").arg(video_parts.join(" · ").toHtmlEscaped()));
+        }
+
+        const int audio_index = demuxer_->audio_index();
+        AVCodecParameters *audio_par = demuxer_->codec_par(audio_index);
+        if (audio_par != nullptr)
+        {
+            QStringList audio_parts;
+            audio_parts.append(QString::fromUtf8(avcodec_get_name(audio_par->codec_id)).toUpper());
+            if (audio_par->sample_rate > 0)
+            {
+                audio_parts.append(QString("%1 Hz").arg(audio_par->sample_rate));
+            }
+            if (audio_par->channels > 0)
+            {
+                audio_parts.append(QString("%1 声道").arg(audio_par->channels));
+            }
+
+            lines.append(QString("<span style=\"color:#8ecfff;\">音频</span> %1").arg(audio_parts.join(" · ").toHtmlEscaped()));
+        }
+    }
+
+    lines.append(QString("<span style=\"color:#8ecfff;\">状态</span> %1").arg(format_playback_rate_text(playback_rate_).toHtmlEscaped()));
+
+    lbl_media_info_->setText(lines.join("<br>"));
+    update_media_info_overlay_geometry();
+    media_info_overlay_->show();
+    media_info_overlay_->raise();
+}
+
+void main_window::update_media_info_overlay_geometry()
+{
+    if (media_info_overlay_ == nullptr || lbl_media_info_ == nullptr || video_widget_ == nullptr)
+    {
+        return;
+    }
+
+    if (!media_info_overlay_->isVisible() && !media_info_overlay_enabled_)
+    {
+        return;
+    }
+
+    const int max_width = qMin(420, qMax(220, video_widget_->width() - 24));
+    media_info_overlay_->setFixedWidth(max_width);
+    media_info_overlay_->adjustSize();
+    media_info_overlay_->move(12, 12);
+}
+
 void main_window::show_shortcuts_help()
 {
     QWidget *dialog_parent = is_video_fullscreen() && video_fullscreen_window_ != nullptr ? video_fullscreen_window_ : this;
@@ -1929,7 +2116,7 @@ void main_window::show_shortcuts_help()
     body_layout->setContentsMargins(16, 16, 16, 16);
     body_layout->setSpacing(12);
 
-    auto *table = new QTableWidget(10, 2, body);
+    auto *table = new QTableWidget(11, 2, body);
     table->setHorizontalHeaderLabels(QStringList{"快捷键", "功能"});
     table->verticalHeader()->setVisible(false);
     table->horizontalHeader()->setStretchLastSection(true);
@@ -1947,6 +2134,7 @@ void main_window::show_shortcuts_help()
         {"Ctrl+H", "最近播放"},
         {"Ctrl+Shift+S", "截图"},
         {"Ctrl+L", "顺播开关"},
+        {"Ctrl+I", "媒体信息浮层"},
         {"?", "显示快捷键说明"},
         {"Space", "播放/暂停"},
         {"Left / Right", "快退 / 快进 5 秒"},
@@ -2046,6 +2234,8 @@ void main_window::set_playback_rate(double rate)
     {
         clock_->set_rate(playback_rate_);
     }
+
+    update_media_info_overlay();
 }
 
 void main_window::set_media_title_text(const QString &text)
@@ -2622,6 +2812,7 @@ void main_window::enter_video_fullscreen()
     video_widget_->setParent(video_fullscreen_window_);
     video_fullscreen_layout_->addWidget(video_widget_, 1);
     video_widget_->show();
+    update_media_info_overlay_geometry();
 
     video_fullscreen_window_->showFullScreen();
     this->hide();
@@ -2643,6 +2834,7 @@ void main_window::exit_video_fullscreen()
     video_widget_->setParent(video_frame_);
     video_frame_layout_->addWidget(video_widget_, 1);
     video_widget_->show();
+    update_media_info_overlay_geometry();
 
     video_fullscreen_window_->hide();
     if (fullscreen_restore_maximized_)
@@ -3201,6 +3393,7 @@ void main_window::on_audio_only_toggled(bool checked)
     }
     update_fullscreen_button();
     update_screenshot_button();
+    update_media_info_overlay();
 }
 
 void main_window::on_video_frame_ready(std::shared_ptr<media_frame> frame)
@@ -3363,6 +3556,7 @@ void main_window::play_playlist_item(const QString &playlist_id, int row, bool a
         video_fullscreen_window_->setWindowIcon(this->windowIcon());
     }
     set_media_title_text(display_name);
+    update_media_info_overlay();
 }
 
 void main_window::play_playlist_row(int row, bool allow_resume_prompt) { play_playlist_item(active_playlist_id(), row, allow_resume_prompt); }
@@ -3522,6 +3716,7 @@ void main_window::stop_play()
     update_playlist_buttons();
     update_fullscreen_button();
     update_screenshot_button();
+    update_media_info_overlay();
     LOG_INFO("stop play finished");
 }
 
@@ -3652,6 +3847,7 @@ bool main_window::start_play(const std::string &filepath)
     this->setFocus();
     update_fullscreen_button();
     update_screenshot_button();
+    update_media_info_overlay();
 
     LOG_INFO("play started successfully");
 
