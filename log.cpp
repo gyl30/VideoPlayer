@@ -50,12 +50,24 @@ static void init_default_log(const std::string& filename)
     uint32_t file_count = get_log_file_count();
     std::vector<spdlog::sink_ptr> sinks;
     sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
-    sinks.push_back(std::make_shared<spdlog::sinks::rotating_file_sink_mt>(filename, file_size, file_count));
+    std::string file_sink_error;
+    try
+    {
+        sinks.push_back(std::make_shared<spdlog::sinks::rotating_file_sink_mt>(filename, file_size, file_count));
+    }
+    catch (const spdlog::spdlog_ex& ex)
+    {
+        file_sink_error = ex.what();
+    }
     auto logger = std::make_shared<spdlog::logger>("", begin(sinks), end(sinks));
     spdlog::set_default_logger(logger);
     spdlog::flush_every(std::chrono::seconds(3));
     spdlog::set_level(spdlog::level::info);
     spdlog::set_pattern("%Y%m%d %T.%f %t %L %v %s:%#");
+    if (!file_sink_error.empty())
+    {
+        spdlog::warn("failed to initialize file log sink: {}", file_sink_error);
+    }
 }
 
 static void set_log_level()

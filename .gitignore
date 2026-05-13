@@ -18,6 +18,7 @@
 *.exe
 *.out
 build
+dist
 compile_commands.json
 .cache
 .idea

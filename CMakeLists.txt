@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.16)
 
 project(VideoPlayer LANGUAGES CXX)
 
+include(GNUInstallDirs)
+include(CheckCXXCompilerFlag)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -87,8 +90,12 @@ set(HARDENING_FLAGS_PRODUCTION
     -fno-delete-null-pointer-checks
     -fno-strict-overflow
     -fno-strict-aliasing
-    -ftrivial-auto-var-init=zero
 )
+
+check_cxx_compiler_flag("-ftrivial-auto-var-init=zero" HAS_FLAG_TRIVIAL_AUTO_VAR_INIT_ZERO)
+if(HAS_FLAG_TRIVIAL_AUTO_VAR_INIT_ZERO)
+    list(APPEND HARDENING_FLAGS_PRODUCTION -ftrivial-auto-var-init=zero)
+endif()
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -167,3 +174,45 @@ endif()
 if(APPLE)
     set_target_properties(VideoPlayer PROPERTIES MACOSX_BUNDLE TRUE)
 endif()
+
+install(TARGETS VideoPlayer
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    BUNDLE DESTINATION .
+)
+
+if(UNIX AND NOT APPLE)
+    install(FILES packaging/VideoPlayer.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
+    )
+    install(FILES icons/app_icon.svg
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+        RENAME VideoPlayer.svg
+    )
+endif()
+
+set(PACKAGE_VERSION_DEFAULT "0.1.0")
+if(DEFINED ENV{PACKAGE_VERSION} AND NOT "$ENV{PACKAGE_VERSION}" STREQUAL "")
+    set(PACKAGE_VERSION "$ENV{PACKAGE_VERSION}")
+else()
+    set(PACKAGE_VERSION "${PACKAGE_VERSION_DEFAULT}")
+endif()
+
+set(CPACK_PACKAGE_NAME "VideoPlayer")
+set(CPACK_PACKAGE_VENDOR "gyl30")
+set(CPACK_PACKAGE_CONTACT "gyl30")
+set(CPACK_PACKAGE_VERSION "${PACKAGE_VERSION}")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "VideoPlayer")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A local video player built with Qt, FFmpeg and SDL")
+
+if(UNIX AND NOT APPLE)
+    set(CPACK_GENERATOR "DEB;RPM")
+    set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+    set(CPACK_DEBIAN_PACKAGE_SECTION "video")
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
+    set(CPACK_RPM_PACKAGE_LICENSE "Proprietary")
+    set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
+endif()
+
+include(CPack)

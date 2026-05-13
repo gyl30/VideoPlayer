@@ -23,7 +23,9 @@
 #include <QSet>
 #include <QTableWidget>
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QStandardPaths>
+#include <QScreen>
 #include <QStyle>
 #include <QTime>
 #include <QToolTip>
@@ -221,6 +223,61 @@ bool is_supported_media_file(const QFileInfo &file_info)
     return file_info.isFile() && supported_media_extensions().contains(file_info.suffix().toLower());
 }
 
+#ifdef Q_OS_WIN
+void apply_windows_fallback_background(QWidget *widget, const QColor &color)
+{
+    if (widget == nullptr)
+    {
+        return;
+    }
+
+    widget->setAutoFillBackground(true);
+    widget->setAttribute(Qt::WA_NoSystemBackground, false);
+    QPalette palette = widget->palette();
+    palette.setColor(QPalette::Window, color);
+    widget->setPalette(palette);
+}
+#else
+void apply_windows_fallback_background(QWidget *, const QColor &) {}
+#endif
+
+bool intersects_available_screen(const QRect &rect)
+{
+    if (!rect.isValid())
+    {
+        return false;
+    }
+
+    const QList<QScreen *> screens = QGuiApplication::screens();
+    for (QScreen *screen : screens)
+    {
+        if (screen == nullptr)
+        {
+            continue;
+        }
+
+        const QRect available = screen->availableGeometry();
+        const QRect overlap = rect.intersected(available);
+        if (overlap.width() >= 200 && overlap.height() >= 120)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+QRect default_main_window_geometry(const QSize &window_size)
+{
+    QScreen *screen = QGuiApplication::primaryScreen();
+    const QRect available = screen != nullptr ? screen->availableGeometry() : QRect(0, 0, 1920, 1080);
+    const QSize bounded_size(std::min(window_size.width(), available.width()),
+                             std::min(window_size.height(), available.height()));
+    const QPoint top_left(available.center().x() - bounded_size.width() / 2,
+                          available.center().y() - bounded_size.height() / 2);
+    return QRect(top_left, bounded_size);
+}
+
 QStringList collect_media_files_from_directory(const QString &directory_path)
 {
     QStringList files;
@@ -381,17 +438,21 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     this->resize(1080, 680);
     this->setMinimumSize(960, 480);
     this->setFocusPolicy(Qt::StrongFocus);
+    this->setAttribute(Qt::WA_StyledBackground, true);
 
     auto *central_widget = new QWidget(this);
     central_widget->setObjectName("rootWidget");
+    central_widget->setAttribute(Qt::WA_StyledBackground, true);
     this->setCentralWidget(central_widget);
 
     auto *main_layout = new QVBoxLayout(central_widget);
     main_layout->setContentsMargins(0, 0, 0, 0);
     main_layout->setSpacing(0);
+    apply_windows_fallback_background(central_widget, QColor("#05080c"));
 
     title_bar_ = new QWidget(this);
     title_bar_->setObjectName("titleBar");
+    title_bar_->setAttribute(Qt::WA_StyledBackground, true);
     title_bar_->setFixedHeight(48);
     title_bar_->installEventFilter(this);
     title_bar_->setAcceptDrops(true);
@@ -399,6 +460,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     auto *title_layout = new QHBoxLayout(title_bar_);
     title_layout->setContentsMargins(0, 0, 0, 0);
     title_layout->setSpacing(0);
+    apply_windows_fallback_background(title_bar_, QColor("#143d65"));
 
     title_drag_area_ = new QWidget(title_bar_);
     title_drag_area_->setObjectName("titleDragArea");
@@ -477,17 +539,21 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 
     auto *content_widget = new QWidget(this);
     content_widget->setObjectName("contentWidget");
+    content_widget->setAttribute(Qt::WA_StyledBackground, true);
     content_widget->setAcceptDrops(true);
     auto *content_layout = new QHBoxLayout(content_widget);
     content_layout->setContentsMargins(0, 0, 0, 0);
     content_layout->setSpacing(0);
+    apply_windows_fallback_background(content_widget, QColor("#000000"));
 
     video_frame_ = new QFrame(this);
     video_frame_->setObjectName("videoFrame");
+    video_frame_->setAttribute(Qt::WA_StyledBackground, true);
     video_frame_->setAcceptDrops(true);
     video_frame_layout_ = new QVBoxLayout(video_frame_);
     video_frame_layout_->setContentsMargins(0, 0, 0, 0);
     video_frame_layout_->setSpacing(0);
+    apply_windows_fallback_background(video_frame_, QColor("#000000"));
 
     video_widget_ = new video_widget(video_frame_);
     video_widget_->setObjectName("videoSurface");
@@ -500,12 +566,14 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 
     playlist_panel_ = new QFrame(this);
     playlist_panel_->setObjectName("playlistPanel");
+    playlist_panel_->setAttribute(Qt::WA_StyledBackground, true);
     playlist_panel_->setFixedWidth(238);
     playlist_panel_->setAcceptDrops(true);
 
     auto *playlist_layout = new QVBoxLayout(playlist_panel_);
     playlist_layout->setContentsMargins(14, 14, 14, 14);
     playlist_layout->setSpacing(10);
+    apply_windows_fallback_background(playlist_panel_, QColor("#0b1929"));
 
     auto *playlist_header_layout = new QHBoxLayout();
     playlist_header_layout->setContentsMargins(0, 0, 0, 0);
@@ -526,6 +594,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 
     auto *playlist_header_group = new QWidget(this);
     playlist_header_group->setObjectName("playlistHeaderGroup");
+    playlist_header_group->setAttribute(Qt::WA_StyledBackground, true);
     auto *playlist_header_group_layout = new QHBoxLayout(playlist_header_group);
     playlist_header_group_layout->setContentsMargins(4, 4, 4, 4);
     playlist_header_group_layout->setSpacing(2);
@@ -552,20 +621,24 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 
     control_panel_ = new QWidget(this);
     control_panel_->setObjectName("controlPanel");
+    control_panel_->setAttribute(Qt::WA_StyledBackground, true);
     control_panel_->setFixedHeight(104);
     control_panel_->setAcceptDrops(true);
 
     auto *control_layout = new QVBoxLayout(control_panel_);
     control_layout->setContentsMargins(0, 0, 0, 0);
     control_layout->setSpacing(0);
+    apply_windows_fallback_background(control_panel_, QColor("#071b30"));
 
     auto *seek_row = new QWidget(this);
     seek_row->setObjectName("seekRow");
+    seek_row->setAttribute(Qt::WA_StyledBackground, true);
     seek_row->setFixedHeight(24);
 
     auto *seek_layout = new QHBoxLayout(seek_row);
     seek_layout->setContentsMargins(10, 0, 10, 0);
     seek_layout->setSpacing(0);
+    apply_windows_fallback_background(seek_row, QColor("#07101a"));
 
     auto *btn_seek_back = new QPushButton(QIcon(":/icons/skip-backward-fill.svg"), QString(), this);
     btn_seek_back->setObjectName("seekEdgeButton");
@@ -593,10 +666,12 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
 
     auto *control_bar = new QWidget(this);
     control_bar->setObjectName("controlBar");
+    control_bar->setAttribute(Qt::WA_StyledBackground, true);
 
     auto *control_bar_layout = new QVBoxLayout(control_bar);
     control_bar_layout->setContentsMargins(16, 5, 16, 6);
     control_bar_layout->setSpacing(6);
+    apply_windows_fallback_background(control_bar, QColor("#0b2138"));
 
     primary_control_row_widget_ = new QWidget(control_bar);
     primary_control_row_layout_ = new QHBoxLayout(primary_control_row_widget_);
@@ -807,6 +882,17 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     update_playlist_buttons();
     update_playlist_header_buttons();
     update_control_layout_mode();
+    QTimer::singleShot(0,
+                       this,
+                       [this]()
+                       {
+                           if (isMinimized())
+                           {
+                               showNormal();
+                           }
+                           raise();
+                           activateWindow();
+                       });
 
     playlist_scrollbar_hide_timer_ = new QTimer(this);
     playlist_scrollbar_hide_timer_->setSingleShot(true);
@@ -2257,9 +2343,13 @@ void main_window::restore_persistent_state()
 
     const QRect saved_geometry = settings.value("window/geometry").toRect();
     const bool saved_maximized = settings.value("window/maximized", false).toBool();
-    if (saved_geometry.isValid())
+    if (saved_geometry.isValid() && intersects_available_screen(saved_geometry))
     {
         setGeometry(saved_geometry);
+    }
+    else
+    {
+        setGeometry(default_main_window_geometry(size()));
     }
     if (saved_maximized)
     {

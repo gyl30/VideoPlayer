@@ -1,0 +1,351 @@
+name: Build And Package
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-linux-glibc:
+    name: Linux glibc / ${{ matrix.arch }} / ${{ matrix.compiler }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: amd64
+            compiler: gcc
+            cc: gcc
+            cxx: g++
+          - runner: ubuntu-22.04
+            arch: amd64
+            compiler: clang
+            cc: clang
+            cxx: clang++
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            compiler: gcc
+            cc: gcc
+            cxx: g++
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            compiler: clang
+            cc: clang
+            cxx: clang++
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            cmake \
+            ninja-build \
+            pkg-config \
+            clang \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            libqt6svg6-dev \
+            libsdl2-dev \
+            libavformat-dev \
+            libavcodec-dev \
+            libavutil-dev \
+            libavfilter-dev \
+            libswresample-dev \
+            libswscale-dev
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release
+
+  build-linux-musl:
+    name: Linux musl / ${{ matrix.arch }} / ${{ matrix.compiler }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: amd64
+            compiler: gcc
+            cc: gcc
+            cxx: g++
+          - runner: ubuntu-22.04
+            arch: amd64
+            compiler: clang
+            cc: clang
+            cxx: clang++
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            compiler: gcc
+            cc: gcc
+            cxx: g++
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            compiler: clang
+            cc: clang
+            cxx: clang++
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build in Alpine
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          docker run --rm \
+            -e CC \
+            -e CXX \
+            -v "${PWD}:/src" \
+            -w /src \
+            alpine:3.21 \
+            sh -lc '
+              apk add --no-cache \
+                bash \
+                build-base \
+                clang \
+                cmake \
+                ninja \
+                pkgconf \
+                mesa-dev \
+                linux-headers \
+                qt6-qtbase-dev \
+                qt6-qtsvg-dev \
+                sdl2-dev \
+                ffmpeg-dev
+              cmake -S . -B build-musl -G Ninja -DCMAKE_BUILD_TYPE=Release
+              cmake --build build-musl --config Release
+            '
+
+  package-linux:
+    name: Linux package / ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set package version
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == v* ]]; then
+            echo "PACKAGE_VERSION=${GITHUB_REF_NAME#v}" >> "${GITHUB_ENV}"
+          else
+            echo "PACKAGE_VERSION=0.1.${GITHUB_RUN_NUMBER}" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            cmake \
+            ninja-build \
+            pkg-config \
+            rpm \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            libqt6svg6-dev \
+            libsdl2-dev \
+            libavformat-dev \
+            libavcodec-dev \
+            libavutil-dev \
+            libavfilter-dev \
+            libswresample-dev \
+            libswscale-dev
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Package
+        run: bash scripts/ci/package-linux.sh build dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VideoPlayer-linux-${{ matrix.arch }}
+          path: |
+            dist/*.deb
+            dist/*.rpm
+          if-no-files-found: error
+
+  build-macos:
+    name: macOS
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set package version
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == v* ]]; then
+            echo "PACKAGE_VERSION=${GITHUB_REF_NAME#v}" >> "${GITHUB_ENV}"
+          else
+            echo "PACKAGE_VERSION=0.1.${GITHUB_RUN_NUMBER}" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew install cmake ninja pkg-config qt ffmpeg sdl2 dylibbundler
+
+      - name: Configure
+        run: |
+          export PATH="$(brew --prefix qt)/bin:${PATH}"
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Package
+        run: |
+          export PATH="$(brew --prefix qt)/bin:${PATH}"
+          bash scripts/ci/package-macos.sh build dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VideoPlayer-macos
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  build-windows:
+    name: Windows
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set package version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == v* ]]; then
+            echo "PACKAGE_VERSION=${GITHUB_REF_NAME#v}" >> "${GITHUB_ENV}"
+          else
+            echo "PACKAGE_VERSION=0.1.${GITHUB_RUN_NUMBER}" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-qt6-svg
+            mingw-w64-x86_64-qt6-tools
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-ffmpeg
+            p7zip
+
+      - name: Configure
+        shell: msys2 {0}
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build --config Release
+
+      - name: Package
+        shell: msys2 {0}
+        run: bash scripts/ci/package-windows.sh build dist
+
+      - name: Smoke test packaged app
+        shell: powershell
+        run: |
+          $exe = Join-Path $env:GITHUB_WORKSPACE 'dist\VideoPlayer-windows-x86_64\VideoPlayer.exe'
+          if (!(Test-Path $exe)) {
+            throw "Packaged executable not found: $exe"
+          }
+
+          $proc = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+          $hasWindow = $false
+
+          try {
+            for ($i = 0; $i -lt 20; $i++) {
+              Start-Sleep -Seconds 2
+              $proc.Refresh()
+              if ($proc.HasExited) {
+                throw "Process exited early with code $($proc.ExitCode)"
+              }
+
+              if ($proc.MainWindowHandle -ne 0) {
+                $hasWindow = $true
+                break
+              }
+            }
+
+            if (-not $hasWindow) {
+              throw "Main window was not detected"
+            }
+          }
+          finally {
+            if ($proc -and -not $proc.HasExited) {
+              $proc.CloseMainWindow() | Out-Null
+              Start-Sleep -Seconds 2
+              if (-not $proc.HasExited) {
+                Stop-Process -Id $proc.Id -Force
+              }
+            }
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VideoPlayer-windows
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - build-linux-glibc
+      - build-linux-musl
+      - package-linux
+      - build-macos
+      - build-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/*
