@@ -262,6 +262,9 @@ void playlist_management_dialog::setup_ui()
     btn_cancel_ = new QPushButton("取消", action_panel);
     btn_apply_->setProperty("role", "primary");
     btn_cancel_->setProperty("role", "secondary");
+    btn_apply_->setDefault(true);
+    btn_apply_->setAutoDefault(true);
+    btn_cancel_->setAutoDefault(false);
     action_footer_layout->addWidget(btn_apply_);
     action_footer_layout->addWidget(btn_cancel_);
     action_layout->addWidget(action_footer);

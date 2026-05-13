@@ -123,7 +123,7 @@ void playlist_name_dialog::setup_ui(const QString &title, const QString &label_t
     btn_accept_ = new QPushButton(accept_text, button_row);
     btn_accept_->setObjectName("dialogActionButton");
     btn_accept_->setCursor(Qt::PointingHandCursor);
-    btn_accept_->setDefault(false);
+    btn_accept_->setDefault(true);
     btn_accept_->setAutoDefault(false);
 
     button_layout->addStretch(1);
