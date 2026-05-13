@@ -34,6 +34,7 @@ class playlist_name_dialog : public QDialog
    private:
     void setup_ui(const QString &title, const QString &label_text, const QString &accept_text);
     void center_to_parent();
+    void update_accept_button_state();
 
    private:
     QWidget *title_bar_ = nullptr;

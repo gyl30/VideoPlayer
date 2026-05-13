@@ -28,6 +28,7 @@ playlist_name_dialog::playlist_name_dialog(const QString &title,
     setup_ui(title, label_text, accept_text);
     line_edit_->setText(initial_text);
     line_edit_->selectAll();
+    update_accept_button_state();
 }
 
 QString playlist_name_dialog::text() const
@@ -123,7 +124,7 @@ void playlist_name_dialog::setup_ui(const QString &title, const QString &label_t
     btn_accept_ = new QPushButton(accept_text, button_row);
     btn_accept_->setObjectName("dialogActionButton");
     btn_accept_->setCursor(Qt::PointingHandCursor);
-    btn_accept_->setDefault(true);
+    btn_accept_->setDefault(false);
     btn_accept_->setAutoDefault(false);
 
     button_layout->addStretch(1);
@@ -141,6 +142,7 @@ void playlist_name_dialog::setup_ui(const QString &title, const QString &label_t
     connect(btn_close, &QPushButton::clicked, this, &QDialog::reject);
     connect(btn_cancel_, &QPushButton::clicked, this, &QDialog::reject);
     connect(btn_accept_, &QPushButton::clicked, this, &QDialog::accept);
+    connect(line_edit_, &QLineEdit::textChanged, this, [this](const QString &) { update_accept_button_state(); });
 }
 
 void playlist_name_dialog::center_to_parent()
@@ -153,4 +155,16 @@ void playlist_name_dialog::center_to_parent()
 
     const QRect parent_rect = parent_widget->frameGeometry();
     move(parent_rect.center() - rect().center());
+}
+
+void playlist_name_dialog::update_accept_button_state()
+{
+    if (line_edit_ == nullptr || btn_accept_ == nullptr)
+    {
+        return;
+    }
+
+    const bool has_text = !line_edit_->text().trimmed().isEmpty();
+    btn_accept_->setEnabled(has_text);
+    btn_accept_->setDefault(has_text);
 }
