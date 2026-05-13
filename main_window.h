@@ -98,7 +98,6 @@ class main_window : public QMainWindow
     void play_selected_playlist_item();
     void show_open_media_menu();
     void show_recent_history_menu();
-    void show_playlist_manage_menu();
     void clear_recent_history();
     void show_shortcuts_help();
     void toggle_media_info_overlay();
@@ -166,7 +165,6 @@ class main_window : public QMainWindow
     QPushButton *btn_playback_rate_ = nullptr;
     QMenu *open_media_menu_ = nullptr;
     QMenu *recent_history_menu_ = nullptr;
-    QMenu *playlist_manage_menu_ = nullptr;
     QMenu *playback_rate_menu_ = nullptr;
 
     QFrame *video_frame_ = nullptr;

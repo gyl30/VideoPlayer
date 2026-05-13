@@ -682,9 +682,6 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     open_media_menu_->setStyleSheet(popup_menu_stylesheet());
     QAction *open_file_action = open_media_menu_->addAction("打开文件");
     QAction *open_folder_action = open_media_menu_->addAction("打开文件夹");
-    playlist_manage_menu_ = new QMenu(this);
-    playlist_manage_menu_->setStyleSheet(popup_menu_stylesheet());
-    QAction *manage_playlist_action = playlist_manage_menu_->addAction("管理播放列表");
     playback_rate_menu_ = new QMenu(this);
     playback_rate_menu_->setStyleSheet(popup_menu_stylesheet());
     recent_history_menu_ = new QMenu(this);
@@ -728,7 +725,6 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
             });
     connect(open_file_action, &QAction::triggered, this, &main_window::on_open_file);
     connect(open_folder_action, &QAction::triggered, this, &main_window::on_open_folder);
-    connect(manage_playlist_action, &QAction::triggered, this, [this]() { open_playlist_management_dialog(); });
     connect(btn_open_media_, &QPushButton::clicked, this, &main_window::show_open_media_menu);
     connect(btn_screenshot_, &QPushButton::clicked, this, &main_window::on_save_screenshot);
     connect(btn_video_fullscreen_, &QPushButton::clicked, this, &main_window::on_toggle_fullscreen);
@@ -736,7 +732,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     connect(btn_audio_only_, &QPushButton::toggled, this, &main_window::on_audio_only_toggled);
     connect(btn_playback_rate_, &QPushButton::clicked, this, &main_window::show_playback_rate_menu);
     connect(btn_playlist_create_, &QPushButton::clicked, this, &main_window::on_create_playlist);
-    connect(btn_playlist_manage_, &QPushButton::clicked, this, &main_window::show_playlist_manage_menu);
+    connect(btn_playlist_manage_, &QPushButton::clicked, this, [this]() { open_playlist_management_dialog(); });
     connect(playlist_view_, &QTreeWidget::customContextMenuRequested, this, &main_window::show_playlist_context_menu);
     connect(playlist_view_, &QTreeWidget::itemDoubleClicked, this, &main_window::on_playlist_item_activated);
     connect(playlist_view_,
@@ -1701,16 +1697,6 @@ void main_window::show_open_media_menu()
     open_media_menu_->popup(btn_open_media_->mapToGlobal(QPoint(0, btn_open_media_->height())));
 }
 
-void main_window::show_playlist_manage_menu()
-{
-    if (btn_playlist_manage_ == nullptr || playlist_manage_menu_ == nullptr)
-    {
-        return;
-    }
-
-    playlist_manage_menu_->popup(btn_playlist_manage_->mapToGlobal(QPoint(0, btn_playlist_manage_->height())));
-}
-
 void main_window::show_playback_rate_menu()
 {
     if (btn_playback_rate_ == nullptr || playback_rate_menu_ == nullptr)
@@ -2614,7 +2600,7 @@ void main_window::update_playlist_header_buttons()
     if (btn_playlist_manage_ != nullptr)
     {
         btn_playlist_manage_->setEnabled(playlist_store_.playlist_count() > 0);
-        btn_playlist_manage_->setToolTip("播放列表操作");
+        btn_playlist_manage_->setToolTip("管理播放列表");
     }
 }
 
