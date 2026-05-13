@@ -54,6 +54,7 @@ void playlist_store::load(QSettings &settings)
         entry.name = normalize_playlist_name(settings.value("name").toString());
         entry.paths = settings.value("paths").toStringList();
         entry.current_row = settings.value("current_row", -1).toInt();
+        entry.collapsed = settings.value("collapsed", false).toBool();
         settings.endGroup();
 
         if (entry.current_row >= entry.paths.size())
@@ -99,6 +100,7 @@ void playlist_store::save(QSettings &settings) const
         settings.setValue("name", entry.name);
         settings.setValue("paths", entry.paths);
         settings.setValue("current_row", entry.current_row);
+        settings.setValue("collapsed", entry.collapsed);
         settings.endGroup();
     }
 
@@ -241,6 +243,18 @@ bool playlist_store::set_current_row(const QString &id, int row)
     }
 
     playlists_[index].current_row = std::clamp(row, 0, max_row);
+    return true;
+}
+
+bool playlist_store::set_collapsed(const QString &id, bool collapsed)
+{
+    const int index = find_index_by_id(id);
+    if (index < 0)
+    {
+        return false;
+    }
+
+    playlists_[index].collapsed = collapsed;
     return true;
 }
 

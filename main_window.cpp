@@ -116,9 +116,20 @@ QString normalize_media_path(const QString &path)
     return QFileInfo(path).absoluteFilePath();
 }
 
-QString playback_position_key(const QString &path)
+QString legacy_playback_position_key(const QString &path)
 {
     return QStringLiteral("playback/positions/%1").arg(QString::fromLatin1(QUrl::toPercentEncoding(normalize_media_path(path))));
+}
+
+QString playlist_playback_position_key(const QString &playlist_id, const QString &path)
+{
+    if (playlist_id.isEmpty())
+    {
+        return legacy_playback_position_key(path);
+    }
+
+    return QStringLiteral("playback/by_playlist/%1/positions/%2")
+        .arg(playlist_id, QString::fromLatin1(QUrl::toPercentEncoding(normalize_media_path(path))));
 }
 
 QString playback_history_entry_group_key(const QString &path)
@@ -291,6 +302,7 @@ QString popup_menu_stylesheet()
 
 struct playback_history_item
 {
+    QString playlist_id;
     QString path;
     QString title;
     int position = 0;
@@ -310,6 +322,7 @@ QList<playback_history_item> load_playback_history(QSettings &settings, int limi
 
         const QString entry_group = playback_history_entry_group_key(path);
         playback_history_item item;
+        item.playlist_id = settings.value(entry_group + "/playlist_id").toString();
         item.path = settings.value(entry_group + "/path", path).toString();
         item.title = settings.value(entry_group + "/title").toString();
         item.position = settings.value(entry_group + "/position", 0).toInt();
@@ -330,6 +343,18 @@ QList<playback_history_item> load_playback_history(QSettings &settings, int limi
         }
     }
     return items;
+}
+
+void clear_all_playlist_playback_positions(QSettings &settings, const QString &path)
+{
+    settings.beginGroup("playback/by_playlist");
+    const QStringList playlist_ids = settings.childGroups();
+    for (const QString &playlist_id : playlist_ids)
+    {
+        settings.remove(QStringLiteral("%1/positions/%2")
+                            .arg(playlist_id, QString::fromLatin1(QUrl::toPercentEncoding(normalize_media_path(path)))));
+    }
+    settings.endGroup();
 }
 }  // namespace
 
@@ -741,6 +766,11 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
             [this](QTreeWidgetItem *item)
             {
                 update_playlist_item_icon(item);
+                if (is_playlist_item(item))
+                {
+                    playlist_store_.set_collapsed(playlist_id_for_item(item), false);
+                    save_playlist_state();
+                }
             });
     connect(playlist_view_,
             &QTreeWidget::itemCollapsed,
@@ -748,6 +778,11 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
             [this](QTreeWidgetItem *item)
             {
                 update_playlist_item_icon(item);
+                if (is_playlist_item(item))
+                {
+                    playlist_store_.set_collapsed(playlist_id_for_item(item), true);
+                    save_playlist_state();
+                }
             });
 
     connect(volume_meter_, &volume_meter::value_changed, this, &main_window::on_volume_changed);
@@ -1448,9 +1483,46 @@ void main_window::show_recent_history_menu()
 
             QAction *action = recent_history_menu_->addAction(action_text);
             action->setToolTip(QDir::toNativeSeparators(item.path));
-            connect(action, &QAction::triggered, this, [this, path = item.path]()
+            connect(action, &QAction::triggered, this, [this, item]()
             {
-                open_files_into_playlist(active_playlist_id(), QStringList{path});
+                if (!item.playlist_id.isEmpty())
+                {
+                    const int row = playlist_store_.index_of_path(item.playlist_id, item.path);
+                    if (row >= 0)
+                    {
+                        play_playlist_item(item.playlist_id, row, true);
+                        return;
+                    }
+                }
+
+                for (const playlist_entry &entry : playlist_store_.playlists())
+                {
+                    const int row = playlist_store_.index_of_path(entry.id, item.path);
+                    if (row >= 0)
+                    {
+                        play_playlist_item(entry.id, row, true);
+                        return;
+                    }
+                }
+
+                const QString target_playlist_id = active_playlist_id();
+                if (target_playlist_id.isEmpty())
+                {
+                    return;
+                }
+
+                if (playlist_store_.index_of_path(target_playlist_id, item.path) < 0)
+                {
+                    playlist_store_.add_path(target_playlist_id, item.path);
+                    refresh_playlist_view();
+                    save_playlist_state();
+                }
+
+                const int row = playlist_store_.index_of_path(target_playlist_id, item.path);
+                if (row >= 0)
+                {
+                    play_playlist_item(target_playlist_id, row, true);
+                }
             });
         }
 
@@ -1473,7 +1545,8 @@ void main_window::clear_recent_history()
     for (const QString &path : order)
     {
         settings.remove(playback_history_entry_group_key(path));
-        settings.remove(playback_position_key(path));
+        settings.remove(legacy_playback_position_key(path));
+        clear_all_playlist_playback_positions(settings, path);
     }
     settings.remove("history/order");
 }
@@ -1916,16 +1989,6 @@ void main_window::refresh_playlist_view()
         return;
     }
 
-    QSet<QString> collapsed_playlist_ids;
-    for (int i = 0; i < playlist_view_->topLevelItemCount(); ++i)
-    {
-        QTreeWidgetItem *item = playlist_view_->topLevelItem(i);
-        if (is_playlist_item(item) && !item->isExpanded())
-        {
-            collapsed_playlist_ids.insert(playlist_id_for_item(item));
-        }
-    }
-
     QSignalBlocker blocker(playlist_view_);
     playlist_view_->clear();
 
@@ -1946,7 +2009,7 @@ void main_window::refresh_playlist_view()
         playlist_font.setBold(true);
         playlist_item->setFont(0, playlist_font);
         playlist_item->setForeground(0, playlist_brush);
-        playlist_item->setExpanded(!collapsed_playlist_ids.contains(entry.id));
+        playlist_item->setExpanded(!entry.collapsed);
         update_playlist_item_icon(playlist_item);
 
         for (int row = 0; row < entry.paths.size(); ++row)
@@ -2244,6 +2307,23 @@ void main_window::save_playlist_state()
 {
     QSettings settings(k_settings_org, k_settings_app);
     playlist_store_.save(settings);
+
+    QSet<QString> valid_playlist_ids;
+    for (const playlist_entry &entry : playlist_store_.playlists())
+    {
+        valid_playlist_ids.insert(entry.id);
+    }
+
+    settings.beginGroup("playback/by_playlist");
+    const QStringList saved_playlist_ids = settings.childGroups();
+    for (const QString &playlist_id : saved_playlist_ids)
+    {
+        if (!valid_playlist_ids.contains(playlist_id))
+        {
+            settings.remove(playlist_id);
+        }
+    }
+    settings.endGroup();
 }
 
 void main_window::save_volume_state(int value)
@@ -2265,6 +2345,7 @@ void main_window::record_playback_history_open(const QString &path)
 
     QSettings settings(k_settings_org, k_settings_app);
     touch_playback_history_order(settings, normalized_path);
+    settings.setValue(entry_group + "/playlist_id", current_playback_playlist_id_);
     settings.setValue(entry_group + "/path", normalized_path);
     settings.setValue(entry_group + "/title", title);
     settings.setValue(entry_group + "/duration", static_cast<int>(duration_));
@@ -2283,6 +2364,7 @@ void main_window::save_playback_history_entry(int current_second)
     const QString title = QFileInfo(normalized_path).fileName();
 
     QSettings settings(k_settings_org, k_settings_app);
+    settings.setValue(entry_group + "/playlist_id", current_playback_playlist_id_);
     settings.setValue(entry_group + "/path", normalized_path);
     settings.setValue(entry_group + "/title", title);
     settings.setValue(entry_group + "/duration", static_cast<int>(duration_));
@@ -2321,7 +2403,7 @@ void main_window::save_current_playback_progress(bool force)
     last_saved_progress_second_ = current_second;
 
     QSettings settings(k_settings_org, k_settings_app);
-    settings.setValue(playback_position_key(current_media_path_), current_second);
+    settings.setValue(playlist_playback_position_key(current_playback_playlist_id_, current_media_path_), current_second);
     save_playback_history_entry(current_second);
 }
 
@@ -2333,7 +2415,11 @@ void main_window::restore_playback_progress(const QString &path, bool allow_prom
     }
 
     QSettings settings(k_settings_org, k_settings_app);
-    const int saved_second = settings.value(playback_position_key(path), 0).toInt();
+    int saved_second = settings.value(playlist_playback_position_key(current_playback_playlist_id_, path), 0).toInt();
+    if (saved_second <= 0)
+    {
+        saved_second = settings.value(legacy_playback_position_key(path), 0).toInt();
+    }
     if (saved_second <= 0)
     {
         return;
@@ -2346,7 +2432,8 @@ void main_window::restore_playback_progress(const QString &path, bool allow_prom
 
     if (duration_ > 1.0 && static_cast<double>(saved_second) >= duration_ - k_resume_prompt_near_end_margin_second)
     {
-        settings.setValue(playback_position_key(path), 0);
+        settings.setValue(playlist_playback_position_key(current_playback_playlist_id_, path), 0);
+        settings.setValue(legacy_playback_position_key(path), 0);
         settings.setValue(playback_history_entry_group_key(path) + "/position", 0);
         return;
     }

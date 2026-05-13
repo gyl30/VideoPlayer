@@ -12,6 +12,7 @@ struct playlist_entry
     QString name;
     QStringList paths;
     int current_row = -1;
+    bool collapsed = false;
 };
 
 class playlist_store
@@ -39,6 +40,7 @@ class playlist_store
     bool remove_playlist(const QString &id);
     bool set_active_playlist(const QString &id);
     bool set_current_row(const QString &id, int row);
+    bool set_collapsed(const QString &id, bool collapsed);
     bool add_path(const QString &id, const QString &path);
     bool copy_rows(const QString &source_id, const QList<int> &rows, const QString &target_id);
     bool move_rows(const QString &source_id, const QList<int> &rows, const QString &target_id);
