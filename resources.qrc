@@ -22,5 +22,11 @@
     <file alias="icons/volume-up.svg">icons/volume-up.svg</file>
     <file alias="icons/skip-backward-fill.svg">icons/skip-backward-fill.svg</file>
     <file alias="icons/skip-forward-fill.svg">icons/skip-forward-fill.svg</file>
+    <file alias="styles/popup_menu.qss">styles/popup_menu.qss</file>
+    <file alias="styles/main_window.qss">styles/main_window.qss</file>
+    <file alias="styles/playlist_name_dialog.qss">styles/playlist_name_dialog.qss</file>
+    <file alias="styles/playlist_management_dialog.qss">styles/playlist_management_dialog.qss</file>
+    <file alias="styles/shortcuts_help_dialog.qss">styles/shortcuts_help_dialog.qss</file>
+    <file alias="styles/video_fullscreen_window.qss">styles/video_fullscreen_window.qss</file>
 </qresource>
 </RCC>

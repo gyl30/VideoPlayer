@@ -1,0 +1,3 @@
+QWidget#videoFullscreenWindow {
+    background: #000000;
+}

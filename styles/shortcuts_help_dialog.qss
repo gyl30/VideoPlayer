@@ -1,0 +1,89 @@
+QDialog#shortcutsHelpDialog {
+    background: #071728;
+    color: #d8e0ea;
+    border: 1px solid #173b60;
+}
+
+QWidget#dialogTitleBar {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1b5d92, stop:0.42 #15466f, stop:1 #0b2239);
+    border-bottom: 1px solid #06111c;
+}
+
+QLabel#dialogTitleLabel {
+    color: #f2f7fb;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+QPushButton#dialogCloseButton {
+    background: transparent;
+    border: none;
+    min-width: 42px;
+    max-width: 42px;
+    min-height: 42px;
+    max-height: 42px;
+}
+
+QPushButton#dialogCloseButton:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+QPushButton#dialogCloseButton:pressed {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+QTableWidget {
+    background: #091523;
+    color: #d8e7f6;
+    border: 1px solid #14324f;
+    border-radius: 8px;
+    gridline-color: rgba(131, 215, 255, 0.08);
+    outline: none;
+    selection-background-color: #1b5f87;
+    selection-color: #ffffff;
+}
+
+QHeaderView::section {
+    background: #0f253d;
+    color: #eef4fa;
+    border: none;
+    border-bottom: 1px solid #173b60;
+    padding: 8px 10px;
+    font-weight: 700;
+}
+
+QTableWidget::item {
+    padding: 8px 10px;
+    border: none;
+}
+
+QTableWidget::item:selected {
+    background: #1b5f87;
+    color: #ffffff;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 4px 2px 4px 0;
+}
+
+QScrollBar::handle:vertical {
+    background: rgba(131, 215, 255, 0.38);
+    border-radius: 4px;
+    min-height: 28px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: rgba(131, 215, 255, 0.56);
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: transparent;
+}

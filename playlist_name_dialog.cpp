@@ -10,6 +10,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
+#include "style_loader.h"
 
 playlist_name_dialog::playlist_name_dialog(const QString &title,
                                            const QString &label_text,
@@ -21,64 +22,8 @@ playlist_name_dialog::playlist_name_dialog(const QString &title,
     setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
     setModal(true);
     resize(420, 176);
-    setStyleSheet(
-        "QDialog {"
-        "    background: #071b30;"
-        "    color: #d8e0ea;"
-        "    border: 1px solid #16385d;"
-        "}"
-        "QWidget#dialogTitleBar {"
-        "    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1c6097, stop:0.48 #143d65, stop:1 #0a2036);"
-        "    border-bottom: 1px solid #06111c;"
-        "}"
-        "QLabel#dialogTitleLabel {"
-        "    color: #f2f7fb;"
-        "    font-size: 15px;"
-        "    font-weight: 700;"
-        "}"
-        "QLabel#dialogLabel {"
-        "    color: #eef4fa;"
-        "    font-size: 14px;"
-        "}"
-        "QLineEdit {"
-        "    background: #0b1929;"
-        "    color: #f5fbff;"
-        "    border: 1px solid #1e7dbd;"
-        "    border-radius: 4px;"
-        "    padding: 8px 10px;"
-        "    min-height: 22px;"
-        "}"
-        "QPushButton#dialogCloseButton {"
-        "    background: transparent;"
-        "    border: none;"
-        "    min-width: 42px;"
-        "    max-width: 42px;"
-        "    min-height: 42px;"
-        "    max-height: 42px;"
-        "}"
-        "QPushButton#dialogCloseButton:hover {"
-        "    background: rgba(255, 255, 255, 0.12);"
-        "}"
-        "QPushButton#dialogCloseButton:pressed {"
-        "    background: rgba(0, 0, 0, 0.2);"
-        "}"
-        "QPushButton#dialogActionButton {"
-        "    background: transparent;"
-        "    color: #f5fbff;"
-        "    border: none;"
-        "    border-radius: 2px;"
-        "    min-width: 68px;"
-        "    min-height: 38px;"
-        "    padding: 0 12px;"
-        "}"
-        "QPushButton#dialogActionButton:hover {"
-        "    background: rgba(255, 255, 255, 0.12);"
-        "    color: #ffffff;"
-        "}"
-        "QPushButton#dialogActionButton:pressed {"
-        "    background: rgba(8, 29, 49, 0.9);"
-        "}"
-    );
+    setObjectName("playlistNameDialog");
+    setStyleSheet(load_stylesheet_resource(":/styles/playlist_name_dialog.qss"));
 
     setup_ui(title, label_text, accept_text);
     line_edit_->setText(initial_text);

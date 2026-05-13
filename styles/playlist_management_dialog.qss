@@ -1,0 +1,174 @@
+QDialog#playlistManagementDialog {
+    background: #071728;
+    color: #d8e0ea;
+    border: 1px solid #173b60;
+}
+
+QWidget#dialogTitleBar {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1b5d92, stop:0.42 #15466f, stop:1 #0b2239);
+    border-bottom: 1px solid #06111c;
+}
+
+QLabel#dialogTitleLabel {
+    color: #f2f7fb;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+QPushButton#dialogCloseButton {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    min-width: 42px;
+    max-width: 42px;
+    min-height: 42px;
+    max-height: 42px;
+    padding: 0;
+}
+
+QPushButton#dialogCloseButton:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+QPushButton#dialogCloseButton:pressed {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+QWidget#playlistSection {
+    background: #0b1929;
+    border: 1px solid #173b60;
+    border-radius: 10px;
+}
+
+QWidget#playlistActionPanel {
+    background: #0b1929;
+    border: 1px solid #173b60;
+    border-radius: 10px;
+}
+
+QWidget#playlistActionFooter {
+    border-top: 1px solid rgba(131, 215, 255, 0.14);
+}
+
+QLabel#actionTitle {
+    color: #eef4fa;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+QLabel[sectionTitle="true"] {
+    color: #eef4fa;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+QListWidget {
+    background: #091523;
+    color: #d8e7f6;
+    border: 1px solid #14324f;
+    border-radius: 8px;
+    outline: none;
+    padding: 5px;
+}
+
+QListWidget::item {
+    min-height: 34px;
+    padding: 6px 10px;
+    border-radius: 6px;
+}
+
+QListWidget::item:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: #f3f8fc;
+}
+
+QListWidget::item:selected {
+    background: #1b5f87;
+    color: #ffffff;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 4px 2px 4px 0;
+}
+
+QScrollBar::handle:vertical {
+    background: rgba(131, 215, 255, 0.38);
+    border-radius: 4px;
+    min-height: 28px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: rgba(131, 215, 255, 0.56);
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+
+QScrollBar:horizontal {
+    background: transparent;
+    height: 0;
+}
+
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0;
+}
+
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: transparent;
+}
+
+QPushButton {
+    background: rgba(255, 255, 255, 0.06);
+    color: #f5fbff;
+    border: none;
+    border-radius: 8px;
+    min-height: 40px;
+    padding: 0 14px;
+}
+
+QPushButton:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+}
+
+QPushButton:pressed {
+    background: rgba(8, 29, 49, 0.9);
+}
+
+QPushButton:disabled {
+    color: rgba(245, 251, 255, 0.35);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+QPushButton[role="primary"] {
+    background: #1e7dbd;
+    color: #ffffff;
+}
+
+QPushButton[role="primary"]:hover {
+    background: #2993da;
+}
+
+QPushButton[role="primary"]:pressed {
+    background: #17689f;
+}
+
+QPushButton[role="secondary"] {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+QPushButton[actionButton="true"] {
+    text-align: left;
+    padding-left: 16px;
+}
