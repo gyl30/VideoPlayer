@@ -67,8 +67,6 @@ class main_window : public QMainWindow
     void on_play_previous();
     void on_play_next();
     void on_open_folder();
-    void on_import_playlist();
-    void on_export_playlist();
     void on_playlist_item_activated(QTreeWidgetItem *item, int column);
     void on_audio_only_toggled(bool checked);
     void on_video_frame_ready(std::shared_ptr<media_frame> frame);
@@ -108,7 +106,6 @@ class main_window : public QMainWindow
     void update_media_info_overlay_geometry();
     QString selected_media_target_playlist_id() const;
     void open_folder_into_playlist(const QString &playlist_id);
-    void import_playlist_into_playlist(const QString &playlist_id);
     void show_playlist_context_menu(const QPoint &position);
     void update_playlist_item_icon(QTreeWidgetItem *item);
     void refresh_playlist_view();
