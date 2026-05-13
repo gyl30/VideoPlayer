@@ -31,8 +31,6 @@ class playlist_management_dialog : public QDialog
     void on_source_playlist_changed();
     void on_target_playlist_changed();
     void on_source_selection_changed();
-    void on_create_playlist();
-    void on_rename_playlist();
     void on_copy_rows();
     void on_move_rows();
     void on_remove_rows();
@@ -58,8 +56,6 @@ class playlist_management_dialog : public QDialog
     QListWidget *target_playlists_list_ = nullptr;
     QListWidget *target_songs_list_ = nullptr;
 
-    QPushButton *btn_create_playlist_ = nullptr;
-    QPushButton *btn_rename_playlist_ = nullptr;
     QPushButton *btn_copy_ = nullptr;
     QPushButton *btn_move_ = nullptr;
     QPushButton *btn_remove_ = nullptr;

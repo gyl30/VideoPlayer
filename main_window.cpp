@@ -1817,10 +1817,34 @@ void main_window::show_playlist_context_menu(const QPoint &position)
 
     QMenu menu(this);
     menu.setStyleSheet(popup_menu_stylesheet());
+    QAction *rename_playlist_action = menu.addAction("重命名播放列表");
+    menu.addSeparator();
     QAction *open_file_action = menu.addAction("打开文件到该播放列表");
     QAction *open_folder_action = menu.addAction("打开文件夹到该播放列表");
     QAction *import_playlist_action = menu.addAction("导入播放列表到该播放列表");
 
+    connect(rename_playlist_action,
+            &QAction::triggered,
+            this,
+            [this, playlist_id]()
+            {
+                const playlist_entry *entry = playlist_store_.playlist_by_id(playlist_id);
+                if (entry == nullptr)
+                {
+                    return;
+                }
+
+                bool accepted = false;
+                const QString name =
+                    playlist_name_dialog::get_text(this, "重命名播放列表", "播放列表名称", "保存", entry->name, &accepted);
+                if (!accepted || !playlist_store_.rename_playlist(playlist_id, name))
+                {
+                    return;
+                }
+
+                refresh_playlist_view();
+                save_playlist_state();
+            });
     connect(open_file_action,
             &QAction::triggered,
             this,

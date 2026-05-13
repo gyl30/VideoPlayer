@@ -10,7 +10,6 @@
 #include <QScrollBar>
 #include <QTimer>
 #include <QVBoxLayout>
-#include "playlist_name_dialog.h"
 #include "playlist_management_dialog.h"
 #include "style_loader.h"
 
@@ -124,39 +123,6 @@ void playlist_management_dialog::on_target_playlist_changed()
 
 void playlist_management_dialog::on_source_selection_changed() { update_action_buttons(); }
 
-void playlist_management_dialog::on_create_playlist()
-{
-    bool accepted = false;
-    const QString name = playlist_name_dialog::get_text(this, "新建播放列表", "播放列表名称", "创建", "", &accepted);
-    if (!accepted)
-    {
-        return;
-    }
-
-    const QString playlist_id = temp_store_.create_playlist(name);
-    temp_store_.set_active_playlist(playlist_id);
-    populate_playlist_lists();
-}
-
-void playlist_management_dialog::on_rename_playlist()
-{
-    const QString playlist_id = current_playlist_id(source_playlists_list_);
-    const playlist_entry *entry = temp_store_.playlist_by_id(playlist_id);
-    if (entry == nullptr)
-    {
-        return;
-    }
-
-    bool accepted = false;
-    const QString name = playlist_name_dialog::get_text(this, "重命名播放列表", "播放列表名称", "保存", entry->name, &accepted);
-    if (!accepted || !temp_store_.rename_playlist(playlist_id, name))
-    {
-        return;
-    }
-
-    populate_playlist_lists();
-}
-
 void playlist_management_dialog::on_copy_rows()
 {
     const QString source_id = current_playlist_id(source_playlists_list_);
@@ -251,18 +217,6 @@ void playlist_management_dialog::setup_ui()
     source_playlists_list_->setMaximumHeight(160);
     install_auto_hide_scrollbar(source_playlists_list_);
     source_layout->addWidget(source_playlists_list_);
-
-    auto *playlist_button_row = new QWidget(source_panel);
-    auto *playlist_button_layout = new QHBoxLayout(playlist_button_row);
-    playlist_button_layout->setContentsMargins(0, 0, 0, 0);
-    playlist_button_layout->setSpacing(8);
-
-    btn_create_playlist_ = new QPushButton("新建播放列表", playlist_button_row);
-    btn_rename_playlist_ = new QPushButton("重命名播放列表", playlist_button_row);
-    btn_rename_playlist_->setEnabled(false);
-    playlist_button_layout->addWidget(btn_create_playlist_, 1);
-    playlist_button_layout->addWidget(btn_rename_playlist_, 1);
-    source_layout->addWidget(playlist_button_row);
 
     auto *source_file_label = new QLabel("源文件列表", source_panel);
     source_file_label->setProperty("sectionTitle", true);
@@ -359,8 +313,6 @@ void playlist_management_dialog::setup_connections()
             {
                 on_target_playlist_changed();
             });
-    connect(btn_create_playlist_, &QPushButton::clicked, this, &playlist_management_dialog::on_create_playlist);
-    connect(btn_rename_playlist_, &QPushButton::clicked, this, &playlist_management_dialog::on_rename_playlist);
     connect(btn_copy_, &QPushButton::clicked, this, &playlist_management_dialog::on_copy_rows);
     connect(btn_move_, &QPushButton::clicked, this, &playlist_management_dialog::on_move_rows);
     connect(btn_remove_, &QPushButton::clicked, this, &playlist_management_dialog::on_remove_rows);
@@ -469,7 +421,6 @@ void playlist_management_dialog::update_action_buttons()
     const bool has_selected_rows = !selected_source_rows().isEmpty();
     const bool different_playlist = has_source_playlist && has_target_playlist && source_id != target_id;
 
-    btn_rename_playlist_->setEnabled(has_source_playlist);
     btn_copy_->setEnabled(has_selected_rows && different_playlist);
     btn_move_->setEnabled(has_selected_rows && different_playlist);
     btn_remove_->setEnabled(has_selected_rows && has_source_playlist);
