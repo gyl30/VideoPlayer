@@ -31,6 +31,7 @@
 #include <QToolTip>
 #include <QUrl>
 #include <QWindow>
+#include <QPainter>
 #include <algorithm>
 #include <cmath>
 #include "log.h"
@@ -439,6 +440,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     this->setMinimumSize(960, 480);
     this->setFocusPolicy(Qt::StrongFocus);
     this->setAttribute(Qt::WA_StyledBackground, true);
+    apply_windows_fallback_background(this, QColor("#05080c"));
 
     auto *central_widget = new QWidget(this);
     central_widget->setObjectName("rootWidget");
@@ -1083,6 +1085,15 @@ void main_window::closeEvent(QCloseEvent *event)
         LOG_INFO("main window close accepted, quitting application");
         QCoreApplication::quit();
     }
+}
+
+void main_window::paintEvent(QPaintEvent *event)
+{
+#ifdef Q_OS_WIN
+    QPainter painter(this);
+    painter.fillRect(rect(), QColor("#05080c"));
+#endif
+    QMainWindow::paintEvent(event);
 }
 
 bool main_window::eventFilter(QObject *watched, QEvent *event)
@@ -2606,6 +2617,7 @@ void main_window::enter_video_fullscreen()
         video_fullscreen_window_ = new QWidget(nullptr, Qt::Window | Qt::FramelessWindowHint);
         video_fullscreen_window_->setObjectName("videoFullscreenWindow");
         video_fullscreen_window_->setFocusPolicy(Qt::StrongFocus);
+        apply_windows_fallback_background(video_fullscreen_window_, QColor("#000000"));
         video_fullscreen_window_->setStyleSheet(load_stylesheet_resource(":/styles/video_fullscreen_window.qss"));
         video_fullscreen_window_->setAcceptDrops(true);
         video_fullscreen_window_->installEventFilter(this);

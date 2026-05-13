@@ -15,6 +15,7 @@
 #include <QScrollBar>
 #include <QEvent>
 #include <QKeyEvent>
+#include <QPaintEvent>
 #include <QPoint>
 #include <QResizeEvent>
 #include <Qt>
@@ -49,6 +50,7 @@ class main_window : public QMainWindow
     void closeEvent(QCloseEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 
    private slots:
