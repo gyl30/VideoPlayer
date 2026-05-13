@@ -172,3 +172,7 @@ QPushButton[actionButton="true"] {
     text-align: left;
     padding-left: 16px;
 }
+
+QPushButton:default {
+    border: 1px solid #83d7ff;
+}

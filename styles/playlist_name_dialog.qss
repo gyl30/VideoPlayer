@@ -64,3 +64,17 @@ QPushButton#dialogActionButton:hover {
 QPushButton#dialogActionButton:pressed {
     background: rgba(8, 29, 49, 0.9);
 }
+
+QPushButton#dialogActionButton:default {
+    background: #1e7dbd;
+    color: #ffffff;
+    border: 1px solid #83d7ff;
+}
+
+QPushButton#dialogActionButton:default:hover {
+    background: #2993da;
+}
+
+QPushButton#dialogActionButton:default:pressed {
+    background: #17689f;
+}
