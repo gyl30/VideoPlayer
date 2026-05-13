@@ -296,32 +296,33 @@ QPushButton#toolBlockButton:pressed {
 
 QSlider::groove:horizontal {
     height: 6px;
-    background: #0c2741;
-    border-radius: 2px;
+    background: #10263b;
+    border-radius: 3px;
 }
 
 QSlider::sub-page:horizontal {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f6cf3, stop:0.78 #97b3ff, stop:1 #f7fdff);
-    border-radius: 1px;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1b5f87, stop:0.62 #1e7dbd, stop:1 #83d7ff);
+    border-radius: 3px;
 }
 
 QSlider::add-page:horizontal {
-    background: #152b42;
-    border-radius: 1px;
+    background: #14324f;
+    border-radius: 3px;
 }
 
 QSlider#seekSlider::handle:horizontal {
-    background: #ffffff;
-    border: none;
+    background: #eef8ff;
+    border: 1px solid #83d7ff;
     width: 8px;
     margin: -1px 0;
     border-radius: 4px;
 }
 
 QSlider#seekSlider::handle:horizontal:hover {
-    background: #eef8ff;
+    background: #f7fcff;
 }
 
 QSlider#seekSlider::handle:horizontal:pressed {
     background: #d9eeff;
+    border-color: #5fbef1;
 }
