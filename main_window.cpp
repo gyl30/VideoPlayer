@@ -1906,12 +1906,10 @@ void main_window::show_playlist_context_menu(const QPoint &position)
     }
 
     QTreeWidgetItem *item = playlist_view_->itemAt(position);
-    if (!is_playlist_item(item))
+    if (!is_playlist_item(item) && !is_playlist_file_item(item))
     {
         return;
     }
-
-    playlist_view_->setCurrentItem(item);
 
     const QString playlist_id = playlist_id_for_item(item);
     if (playlist_id.isEmpty())
@@ -1919,49 +1917,100 @@ void main_window::show_playlist_context_menu(const QPoint &position)
         return;
     }
 
+    const QList<QTreeWidgetItem *> selected_items = playlist_view_->selectedItems();
+    const bool use_selected_file_items = is_playlist_file_item(item) && item->isSelected();
+    playlist_view_->setCurrentItem(item);
+
     QMenu menu(this);
     menu.setStyleSheet(popup_menu_stylesheet());
-    QAction *rename_playlist_action = menu.addAction("重命名播放列表");
-    menu.addSeparator();
-    QAction *open_file_action = menu.addAction("打开文件到该播放列表");
-    QAction *open_folder_action = menu.addAction("打开文件夹到该播放列表");
+    if (is_playlist_item(item))
+    {
+        QAction *rename_playlist_action = menu.addAction("重命名播放列表");
+        menu.addSeparator();
+        QAction *open_file_action = menu.addAction("打开文件到该播放列表");
+        QAction *open_folder_action = menu.addAction("打开文件夹到该播放列表");
 
-    connect(rename_playlist_action,
-            &QAction::triggered,
-            this,
-            [this, playlist_id]()
-            {
-                const playlist_entry *entry = playlist_store_.playlist_by_id(playlist_id);
-                if (entry == nullptr)
+        connect(rename_playlist_action,
+                &QAction::triggered,
+                this,
+                [this, playlist_id]()
                 {
-                    return;
-                }
+                    const playlist_entry *entry = playlist_store_.playlist_by_id(playlist_id);
+                    if (entry == nullptr)
+                    {
+                        return;
+                    }
 
-                bool accepted = false;
-                const QString name =
-                    playlist_name_dialog::get_text(this, "重命名播放列表", "播放列表名称", "保存", entry->name, &accepted);
-                if (!accepted || !playlist_store_.rename_playlist(playlist_id, name))
+                    bool accepted = false;
+                    const QString name =
+                        playlist_name_dialog::get_text(this, "重命名播放列表", "播放列表名称", "保存", entry->name, &accepted);
+                    if (!accepted || !playlist_store_.rename_playlist(playlist_id, name))
+                    {
+                        return;
+                    }
+
+                    refresh_playlist_view();
+                    save_playlist_state();
+                });
+        connect(open_file_action,
+                &QAction::triggered,
+                this,
+                [this, playlist_id]()
                 {
-                    return;
+                    open_files_into_playlist(playlist_id);
+                });
+        connect(open_folder_action,
+                &QAction::triggered,
+                this,
+                [this, playlist_id]()
+                {
+                    open_folder_into_playlist(playlist_id);
+                });
+    }
+    else
+    {
+        QList<int> rows_to_remove;
+        if (use_selected_file_items)
+        {
+            bool all_selected_items_removable = true;
+            for (QTreeWidgetItem *selected_item : selected_items)
+            {
+                if (!is_playlist_file_item(selected_item) || playlist_id_for_item(selected_item) != playlist_id)
+                {
+                    all_selected_items_removable = false;
+                    break;
                 }
+            }
 
-                refresh_playlist_view();
-                save_playlist_state();
-            });
-    connect(open_file_action,
-            &QAction::triggered,
-            this,
-            [this, playlist_id]()
+            if (all_selected_items_removable)
             {
-                open_files_into_playlist(playlist_id);
-            });
-    connect(open_folder_action,
-            &QAction::triggered,
-            this,
-            [this, playlist_id]()
-            {
-                open_folder_into_playlist(playlist_id);
-            });
+                for (QTreeWidgetItem *selected_item : selected_items)
+                {
+                    rows_to_remove.append(playlist_row_for_item(selected_item));
+                }
+            }
+        }
+
+        if (rows_to_remove.isEmpty())
+        {
+            rows_to_remove.append(playlist_row_for_item(item));
+        }
+
+        QAction *remove_file_action = menu.addAction(rows_to_remove.size() > 1 ? "从播放列表移除所选文件" : "从播放列表移除");
+        connect(remove_file_action,
+                &QAction::triggered,
+                this,
+                [this, playlist_id, rows_to_remove]()
+                {
+                    playlist_store updated_store = playlist_store_;
+                    if (!updated_store.remove_rows(playlist_id, rows_to_remove))
+                    {
+                        return;
+                    }
+
+                    apply_playlist_management_changes(updated_store);
+                });
+    }
 
     menu.exec(playlist_view_->viewport()->mapToGlobal(position));
 }
