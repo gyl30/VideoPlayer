@@ -71,6 +71,7 @@ class main_window : public QMainWindow
     void on_open_folder();
     void on_playlist_item_activated(QTreeWidgetItem *item, int column);
     void on_audio_only_toggled(bool checked);
+    void on_hardware_decode_toggled(bool checked);
     void on_video_frame_ready(std::shared_ptr<media_frame> frame);
     void on_create_playlist();
 
@@ -162,6 +163,7 @@ class main_window : public QMainWindow
     QPushButton *btn_playlist_ = nullptr;
     QPushButton *btn_sequential_playback_ = nullptr;
     QPushButton *btn_audio_only_ = nullptr;
+    QPushButton *btn_hardware_decode_ = nullptr;
     QPushButton *btn_playlist_create_ = nullptr;
     QPushButton *btn_playlist_manage_ = nullptr;
     QPushButton *btn_playback_rate_ = nullptr;
@@ -214,6 +216,7 @@ class main_window : public QMainWindow
     uint64_t playback_generation_ = 0;
     double playback_rate_ = 1.0;
     bool audio_only_mode_ = false;
+    bool hardware_decode_enabled_ = false;
     bool media_info_overlay_enabled_ = false;
     playlist_store playlist_store_;
 

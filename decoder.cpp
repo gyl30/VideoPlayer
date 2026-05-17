@@ -165,19 +165,19 @@ bool decoder::reopen_software_decoder()
 bool decoder::open(const AVCodecParameters *par,
                    safe_queue<std::shared_ptr<media_packet>> *packet_queue,
                    safe_queue<std::shared_ptr<media_frame>> *frame_queue,
-                   const std::string &name)
+                   const std::string &name,
+                   bool try_hardware_decode)
 {
     packet_queue_ = packet_queue;
     frame_queue_ = frame_queue;
     name_ = name;
     video_decoder_ = (par != nullptr && par->codec_type == AVMEDIA_TYPE_VIDEO);
 
-    LOG_INFO("decoder opening name {} codec id {}", name, avcodec_get_name(par->codec_id));
-
     if (par == nullptr)
     {
         return false;
     }
+    LOG_INFO("decoder opening name {} codec id {}", name, avcodec_get_name(par->codec_id));
 
     if (codec_par_ == nullptr)
     {
@@ -189,7 +189,7 @@ bool decoder::open(const AVCodecParameters *par,
         return false;
     }
 
-    if (!open_codec_context(video_decoder_))
+    if (!open_codec_context(video_decoder_ && try_hardware_decode))
     {
         return false;
     }

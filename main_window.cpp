@@ -776,6 +776,13 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     btn_audio_only_->setChecked(false);
     btn_audio_only_->setToolTip("隐藏视频画面，仅播放音频");
 
+    btn_hardware_decode_ = new QPushButton("硬解", this);
+    btn_hardware_decode_->setObjectName("controlButtonWide");
+    btn_hardware_decode_->setCursor(Qt::PointingHandCursor);
+    btn_hardware_decode_->setCheckable(true);
+    btn_hardware_decode_->setChecked(hardware_decode_enabled_);
+    btn_hardware_decode_->setToolTip("开启后新打开的文件优先使用硬件解码，失败时回退软解");
+
     btn_playback_rate_ = new QPushButton(this);
     btn_playback_rate_->setObjectName("controlButtonWide");
     btn_playback_rate_->setCursor(Qt::PointingHandCursor);
@@ -832,6 +839,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     connect(btn_video_fullscreen_, &QPushButton::clicked, this, &main_window::on_toggle_fullscreen);
     connect(btn_playlist_, &QPushButton::clicked, this, &main_window::on_toggle_playlist);
     connect(btn_audio_only_, &QPushButton::toggled, this, &main_window::on_audio_only_toggled);
+    connect(btn_hardware_decode_, &QPushButton::toggled, this, &main_window::on_hardware_decode_toggled);
     connect(btn_playback_rate_, &QPushButton::clicked, this, &main_window::show_playback_rate_menu);
     connect(btn_playlist_create_, &QPushButton::clicked, this, &main_window::on_create_playlist);
     connect(btn_playlist_manage_, &QPushButton::clicked, this, [this]() { open_playlist_management_dialog(); });
@@ -2422,6 +2430,12 @@ void main_window::restore_persistent_state()
         const int saved_volume = qBound(0, settings.value("audio/volume", volume_meter_->value()).toInt(), 100);
         volume_meter_->setValue(saved_volume);
     }
+    hardware_decode_enabled_ = settings.value("playback/hardware_decode_enabled", false).toBool();
+    if (btn_hardware_decode_ != nullptr)
+    {
+        const QSignalBlocker blocker(btn_hardware_decode_);
+        btn_hardware_decode_->setChecked(hardware_decode_enabled_);
+    }
 
     playlist_store_.load(settings);
     refresh_playlist_view();
@@ -2451,6 +2465,7 @@ void main_window::save_persistent_state()
     {
         save_volume_state(volume_meter_->value());
     }
+    settings.setValue("playback/hardware_decode_enabled", hardware_decode_enabled_);
 }
 
 void main_window::save_playlist_state()
@@ -2891,9 +2906,12 @@ void main_window::rebuild_control_rows(int layout_mode)
             }
         }
 
-        if (btn_audio_only_ != nullptr)
+        for (QPushButton *button : {btn_audio_only_, btn_hardware_decode_})
         {
-            btn_audio_only_->setFixedHeight(wide_height);
+            if (button != nullptr)
+            {
+                button->setFixedHeight(wide_height);
+            }
         }
 
         if (btn_playback_rate_ != nullptr)
@@ -2933,6 +2951,7 @@ void main_window::rebuild_control_rows(int layout_mode)
         secondary_control_row_layout_->addWidget(lbl_time_, 1);
         secondary_control_row_layout_->addSpacing(8);
         secondary_control_row_layout_->addWidget(btn_audio_only_);
+        secondary_control_row_layout_->addWidget(btn_hardware_decode_);
 
         tertiary_control_row_layout_->addWidget(btn_playback_rate_);
         tertiary_control_row_layout_->addWidget(lbl_vol_icon_low_);
@@ -2962,6 +2981,7 @@ void main_window::rebuild_control_rows(int layout_mode)
         primary_control_row_layout_->addWidget(btn_play_pause_);
         primary_control_row_layout_->addWidget(btn_forward_);
         primary_control_row_layout_->addWidget(btn_audio_only_);
+        primary_control_row_layout_->addWidget(btn_hardware_decode_);
         primary_control_row_layout_->addStretch(1);
 
         secondary_control_row_layout_->addWidget(lbl_time_);
@@ -2993,6 +3013,7 @@ void main_window::rebuild_control_rows(int layout_mode)
     primary_control_row_layout_->addWidget(btn_play_pause_);
     primary_control_row_layout_->addWidget(btn_forward_);
     primary_control_row_layout_->addWidget(btn_audio_only_);
+    primary_control_row_layout_->addWidget(btn_hardware_decode_);
     primary_control_row_layout_->addStretch(1);
     primary_control_row_layout_->addWidget(btn_playback_rate_);
     primary_control_row_layout_->addWidget(lbl_vol_icon_low_);
@@ -3163,6 +3184,14 @@ void main_window::on_audio_only_toggled(bool checked)
     update_fullscreen_button();
     update_screenshot_button();
     update_media_info_overlay();
+}
+
+void main_window::on_hardware_decode_toggled(bool checked)
+{
+    hardware_decode_enabled_ = checked;
+    LOG_INFO("hardware decode preference changed enabled {}", hardware_decode_enabled_);
+    QSettings settings(k_settings_org, k_settings_app);
+    settings.setValue("playback/hardware_decode_enabled", hardware_decode_enabled_);
 }
 
 void main_window::on_video_frame_ready(std::shared_ptr<media_frame> frame)
@@ -3537,7 +3566,11 @@ bool main_window::start_play(const std::string &filepath)
     if (demuxer_->video_index() >= 0)
     {
         LOG_INFO("video stream found index {}", demuxer_->video_index());
-        if (!video_decoder_->open(demuxer_->codec_par(demuxer_->video_index()), video_pkt_queue_.get(), video_frame_queue_.get(), "Video"))
+        if (!video_decoder_->open(demuxer_->codec_par(demuxer_->video_index()),
+                                  video_pkt_queue_.get(),
+                                  video_frame_queue_.get(),
+                                  "Video",
+                                  hardware_decode_enabled_))
         {
             LOG_ERROR("failed to open video decoder");
             return false;

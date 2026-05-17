@@ -23,7 +23,8 @@ class decoder
     bool open(const AVCodecParameters *par,
               safe_queue<std::shared_ptr<media_packet>> *packet_queue,
               safe_queue<std::shared_ptr<media_frame>> *frame_queue,
-              const std::string &name);
+              const std::string &name,
+              bool try_hardware_decode = true);
 
     void run();
     void stop();
