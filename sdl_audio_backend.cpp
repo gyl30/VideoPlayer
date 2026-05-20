@@ -383,11 +383,11 @@ void sdl_audio_backend::process_audio()
                 media_cursor_valid = true;
             }
             const uint8_t *chunk_src = filtered_frame->data[0];
-            av_frame_free(&filtered_frame);
 
             const uint64_t pending_generation = config_generation_.load();
             if (pending_generation != active_generation)
             {
+                av_frame_free(&filtered_frame);
                 active_generation = pending_generation;
                 break;
             }
@@ -431,6 +431,8 @@ void sdl_audio_backend::process_audio()
                 media_cursor = chunk_base_pts;
                 frames_offset += frames_this_chunk;
             }
+
+            av_frame_free(&filtered_frame);
         }
     }
 
