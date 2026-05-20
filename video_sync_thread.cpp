@@ -60,7 +60,14 @@ void video_sync_thread::run()
             continue;
         }
 
-        const double pts = static_cast<double>(frame->raw()->pts) * av_q2d(time_base_);
+        auto *decoded_frame = frame->raw();
+        int64_t timestamp = decoded_frame->pts;
+        if (timestamp == AV_NOPTS_VALUE)
+        {
+            timestamp = decoded_frame->best_effort_timestamp;
+        }
+
+        const double pts = timestamp == AV_NOPTS_VALUE ? clock_->get() : static_cast<double>(timestamp) * av_q2d(time_base_);
 
         while (!stop_ && !isInterruptionRequested())
         {
@@ -81,7 +88,7 @@ void video_sync_thread::run()
             const double diff = pts - master_clock;
             const double playback_rate = clock_->rate();
 
-            LOG_TRACE("video pts {:.3f} raw pts {} master clock {:.3f} diff {:.3f}", pts, frame->raw()->pts, master_clock, diff);
+            LOG_TRACE("video pts {:.3f} raw pts {} master clock {:.3f} diff {:.3f}", pts, decoded_frame->pts, master_clock, diff);
             if (diff > 0.01)
             {
                 auto sleep_ms = static_cast<uint64_t>((diff / playback_rate) * 1000.0);
