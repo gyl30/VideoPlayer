@@ -518,11 +518,17 @@ bool sdl_audio_backend::configure_filter_graph(const AVFrame *frame, double play
     }
 
 #if LIBAVUTIL_VERSION_MAJOR >= 57
-    audio_channel_layout src_layout = frame->ch_layout;
-    if (src_layout.nb_channels == 0)
+    audio_channel_layout src_layout{};
+    if (frame->ch_layout.nb_channels == 0)
     {
         av_channel_layout_default(&src_layout, frame_channels_compat(frame));
     }
+    else if (av_channel_layout_copy(&src_layout, &frame->ch_layout) < 0)
+    {
+        LOG_ERROR("audio filter graph failed to copy source channel layout");
+        return false;
+    }
+
     char layout_desc[128] = {0};
     if (av_channel_layout_describe(&src_layout, layout_desc, sizeof(layout_desc)) < 0)
     {
@@ -675,11 +681,16 @@ bool sdl_audio_backend::filter_matches_frame(const AVFrame *frame) const
     }
 
 #if LIBAVUTIL_VERSION_MAJOR >= 57
-    audio_channel_layout frame_layout = frame->ch_layout;
-    if (frame_layout.nb_channels == 0)
+    audio_channel_layout frame_layout{};
+    if (frame->ch_layout.nb_channels == 0)
     {
         av_channel_layout_default(&frame_layout, frame_channels_compat(frame));
     }
+    else if (av_channel_layout_copy(&frame_layout, &frame->ch_layout) < 0)
+    {
+        return false;
+    }
+
     const bool same_layout = av_channel_layout_compare(&filter_src_layout_, &frame_layout) == 0;
     av_channel_layout_uninit(&frame_layout);
     return same_layout;
