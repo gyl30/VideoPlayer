@@ -110,6 +110,7 @@ class main_window : public QMainWindow
     void toggle_media_info_overlay();
     void update_media_info_overlay();
     void update_media_info_overlay_geometry();
+    QWidget *current_video_container() const;
     QString selected_media_target_playlist_id() const;
     void open_folder_into_playlist(const QString &playlist_id);
     void show_playlist_context_menu(const QPoint &position);
@@ -176,6 +177,8 @@ class main_window : public QMainWindow
     QMenu *playback_rate_menu_ = nullptr;
 
     QFrame *video_frame_ = nullptr;
+    QFrame *media_info_overlay_ = nullptr;
+    QLabel *media_info_overlay_label_ = nullptr;
     QFrame *playlist_panel_ = nullptr;
     QTreeWidget *playlist_view_ = nullptr;
     QWidget *control_panel_ = nullptr;
