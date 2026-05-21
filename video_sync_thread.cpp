@@ -68,6 +68,7 @@ void video_sync_thread::run()
         }
 
         const double pts = timestamp == AV_NOPTS_VALUE ? clock_->get() : static_cast<double>(timestamp) * av_q2d(time_base_);
+        bool discard_frame = false;
 
         while (!stop_ && !isInterruptionRequested())
         {
@@ -75,6 +76,12 @@ void video_sync_thread::run()
             {
                 msleep(10);
                 continue;
+            }
+
+            if (frame->serial() != packet_queue_->serial())
+            {
+                discard_frame = true;
+                break;
             }
 
             if (clock_->serial() != frame->serial())
@@ -107,6 +114,10 @@ void video_sync_thread::run()
         if (stop_ || isInterruptionRequested())
         {
             break;
+        }
+        if (discard_frame || frame->serial() != packet_queue_->serial())
+        {
+            continue;
         }
 
         const double final_diff = pts - clock_->get();

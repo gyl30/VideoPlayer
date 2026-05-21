@@ -3283,6 +3283,10 @@ void main_window::execute_seek(double target)
     }
 
     target = bounded_seek_target(target);
+    if (audio_backend_ != nullptr)
+    {
+        audio_backend_->flush();
+    }
     if (video_frame_queue_ != nullptr)
     {
         video_frame_queue_->clear();

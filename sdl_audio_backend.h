@@ -37,6 +37,7 @@ class sdl_audio_backend
     void pause(bool p) const;
     void set_playback_rate(double rate);
     void set_volume(int percent);
+    void flush();
     void close();
 
    private:
@@ -74,6 +75,7 @@ class sdl_audio_backend
     std::atomic<bool> stop_{false};
     std::atomic<double> playback_rate_{1.0};
     std::atomic<uint64_t> config_generation_{0};
+    std::atomic<uint64_t> flush_generation_{0};
     std::atomic<int> volume_{SDL_MIX_MAXVOLUME};
     std::mutex pcm_mutex_;
     std::condition_variable pcm_cond_;

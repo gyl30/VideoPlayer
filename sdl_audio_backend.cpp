@@ -72,6 +72,7 @@ bool sdl_audio_backend::init(safe_queue<std::shared_ptr<media_frame>> *frame_que
     stop_.store(false);
     playback_rate_.store(1.0);
     config_generation_.store(0);
+    flush_generation_.store(0);
     filter_src_rate_ = 0;
     filter_src_fmt_ = AV_SAMPLE_FMT_NONE;
     filter_playback_rate_ = 1.0;
@@ -161,6 +162,14 @@ void sdl_audio_backend::set_volume(int percent)
     volume_.store(vol);
 }
 
+void sdl_audio_backend::flush()
+{
+    LOG_INFO("sdl audio backend flushing queued audio");
+    flush_generation_.fetch_add(1);
+    clear_pcm_queue();
+    pcm_cond_.notify_all();
+}
+
 void sdl_audio_backend::close()
 {
     LOG_INFO("sdl audio backend closing");
@@ -196,11 +205,25 @@ void sdl_audio_backend::audio_callback_static(void *userdata, Uint8 *stream, int
 void sdl_audio_backend::audio_callback(Uint8 *stream, int len)
 {
     SDL_memset(stream, 0, static_cast<size_t>(len));
+    const int callback_len = len;
+    const double output_latency_seconds =
+        static_cast<double>(2 * callback_len) / static_cast<double>(k_output_sample_rate * k_output_bytes_per_frame);
 
     std::lock_guard<std::mutex> lock(pcm_mutex_);
 
     while (len > 0 && !pcm_queue_.empty())
     {
+        while (!pcm_queue_.empty() && packet_queue_ != nullptr && pcm_queue_.front().serial != packet_queue_->serial())
+        {
+            const size_t stale_size = pcm_queue_.front().data.size();
+            queued_pcm_bytes_ = queued_pcm_bytes_ > stale_size ? queued_pcm_bytes_ - stale_size : 0;
+            pcm_queue_.pop_front();
+        }
+        if (pcm_queue_.empty())
+        {
+            break;
+        }
+
         pcm_chunk &chunk = pcm_queue_.front();
         const int bytes_left = static_cast<int>(chunk.data.size() - chunk.offset);
         const int bytes_to_write = std::min(bytes_left, len);
@@ -211,8 +234,11 @@ void sdl_audio_backend::audio_callback(Uint8 *stream, int len)
             {
                 clock_->set_rate(chunk.playback_rate);
             }
-            const double played_frames = static_cast<double>(chunk.offset / static_cast<size_t>(k_output_bytes_per_frame));
-            const double pts = chunk.pts + (played_frames / static_cast<double>(k_output_sample_rate));
+            const double submitted_frames =
+                static_cast<double>((chunk.offset + static_cast<size_t>(bytes_to_write)) / static_cast<size_t>(k_output_bytes_per_frame));
+            const double submitted_media_seconds = (submitted_frames / static_cast<double>(k_output_sample_rate)) * chunk.playback_rate;
+            const double latency_media_seconds = output_latency_seconds * chunk.playback_rate;
+            const double pts = chunk.pts + submitted_media_seconds - latency_media_seconds;
             clock_->set(pts, chunk.serial);
         }
 
@@ -240,8 +266,23 @@ void sdl_audio_backend::process_audio()
     LOG_INFO("sdl audio backend process loop started");
 
     uint64_t active_generation = config_generation_.load();
+    uint64_t active_flush_generation = flush_generation_.load();
     double media_cursor = 0.0;
     bool media_cursor_valid = false;
+    auto take_flush_request = [&]()
+    {
+        const uint64_t requested_flush_generation = flush_generation_.load();
+        if (requested_flush_generation == active_flush_generation)
+        {
+            return false;
+        }
+
+        active_flush_generation = requested_flush_generation;
+        active_generation = config_generation_.load();
+        media_cursor = 0.0;
+        media_cursor_valid = false;
+        return true;
+    };
 
     while (!stop_.load())
     {
@@ -273,6 +314,11 @@ void sdl_audio_backend::process_audio()
             continue;
         }
 
+        if (take_flush_request())
+        {
+            continue;
+        }
+
         if (!frame->flush() && frame->serial() != packet_queue_->serial())
         {
             continue;
@@ -284,6 +330,7 @@ void sdl_audio_backend::process_audio()
             clear_pcm_queue();
             destroy_filter_graph();
             active_generation = config_generation_.load();
+            active_flush_generation = flush_generation_.load();
             media_cursor = 0.0;
             media_cursor_valid = false;
             continue;
@@ -344,6 +391,11 @@ void sdl_audio_backend::process_audio()
 
         while (!stop_.load())
         {
+            if (take_flush_request())
+            {
+                break;
+            }
+
             AVFrame *filtered_frame = av_frame_alloc();
             if (filtered_frame == nullptr)
             {
@@ -360,6 +412,12 @@ void sdl_audio_backend::process_audio()
             if (sink_ret < 0)
             {
                 LOG_ERROR("audio process thread failed to pull filtered frame code {}", sink_ret);
+                av_frame_free(&filtered_frame);
+                break;
+            }
+
+            if (take_flush_request())
+            {
                 av_frame_free(&filtered_frame);
                 break;
             }
@@ -395,6 +453,11 @@ void sdl_audio_backend::process_audio()
             int frames_offset = 0;
             while (!stop_.load() && frames_offset < total_frames)
             {
+                if (take_flush_request())
+                {
+                    break;
+                }
+
                 const int frames_this_chunk = std::min(k_output_chunk_frames, total_frames - frames_offset);
                 const size_t bytes_this_chunk = static_cast<size_t>(frames_this_chunk * k_output_bytes_per_frame);
 
@@ -417,8 +480,17 @@ void sdl_audio_backend::process_audio()
 
                 std::unique_lock<std::mutex> pcm_lock(pcm_mutex_);
                 pcm_cond_.wait(
-                    pcm_lock, [this, &chunk]() { return stop_.load() || (queued_pcm_bytes_ + chunk.data.size()) <= k_max_pcm_queue_bytes; });
+                    pcm_lock,
+                    [this, &chunk, &active_flush_generation]()
+                    {
+                        return stop_.load() || flush_generation_.load() != active_flush_generation ||
+                               (queued_pcm_bytes_ + chunk.data.size()) <= k_max_pcm_queue_bytes;
+                    });
                 if (stop_.load())
+                {
+                    break;
+                }
+                if (take_flush_request())
                 {
                     break;
                 }
