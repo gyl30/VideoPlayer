@@ -81,6 +81,10 @@ class main_window : public QMainWindow
     void open_files_into_playlist(const QString &playlist_id);
     void open_files_into_playlist(const QString &playlist_id, const QStringList &filenames);
     void do_seek_relative(double seconds);
+    void request_seek(double target, bool deferred);
+    void execute_seek(double target);
+    void update_seek_display(double target);
+    [[nodiscard]] double bounded_seek_target(double target) const;
     void init_styles();
     void toggle_window_maximized();
     void update_title_maximize_button();
@@ -195,6 +199,7 @@ class main_window : public QMainWindow
     class volume_meter *volume_meter_ = nullptr;
 
     QTimer *ui_timer_ = nullptr;
+    QTimer *seek_commit_timer_ = nullptr;
     QTimer *title_scroll_timer_ = nullptr;
     QTimer *playlist_scrollbar_hide_timer_ = nullptr;
 
@@ -215,6 +220,7 @@ class main_window : public QMainWindow
     int current_playback_row_ = -1;
     uint64_t playback_generation_ = 0;
     double playback_rate_ = 1.0;
+    double pending_seek_target_ = -1.0;
     bool audio_only_mode_ = false;
     bool hardware_decode_enabled_ = false;
     bool media_info_overlay_enabled_ = false;

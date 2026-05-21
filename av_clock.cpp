@@ -10,6 +10,10 @@ void av_clock::set(double p, int serial)
 {
     pts_.store(p);
     serial_.store(serial);
+    if (paused_.load())
+    {
+        pts_at_pause_ = p;
+    }
     update_time();
 }
 

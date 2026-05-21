@@ -50,6 +50,7 @@ constexpr int k_playback_history_limit = 100;
 constexpr int k_resume_prompt_minimum_second = 10;
 constexpr int k_resume_prompt_near_end_margin_second = 30;
 constexpr int k_recent_history_menu_limit = 20;
+constexpr int k_seek_commit_delay_ms = 180;
 constexpr int k_playlist_item_type_role = Qt::UserRole;
 constexpr int k_playlist_id_role = Qt::UserRole + 1;
 constexpr int k_playlist_row_role = Qt::UserRole + 2;
@@ -878,6 +879,20 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     ui_timer_ = new QTimer(this);
     ui_timer_->setInterval(200);
     connect(ui_timer_, &QTimer::timeout, this, &main_window::on_update_ui);
+
+    seek_commit_timer_ = new QTimer(this);
+    seek_commit_timer_->setSingleShot(true);
+    seek_commit_timer_->setInterval(k_seek_commit_delay_ms);
+    connect(seek_commit_timer_,
+            &QTimer::timeout,
+            this,
+            [this]()
+            {
+                if (pending_seek_target_ >= 0.0)
+                {
+                    execute_seek(pending_seek_target_);
+                }
+            });
 
     title_scroll_timer_ = new QTimer(this);
     title_scroll_timer_->setInterval(320);
@@ -2610,9 +2625,7 @@ void main_window::restore_playback_progress(const QString &path, bool allow_prom
 
     LOG_INFO("restoring playback progress path {} second {}", path.toStdString(), saved_second);
     last_saved_progress_second_ = saved_second;
-    slider_seek_->setValue(saved_second);
-    lbl_time_->setText(QString("%1 / %2").arg(format_time(static_cast<double>(saved_second)), format_time(duration_)));
-    demuxer_->seek(static_cast<double>(saved_second));
+    request_seek(static_cast<double>(saved_second), false);
 }
 
 bool main_window::is_video_fullscreen() const
@@ -3217,13 +3230,13 @@ void main_window::on_volume_changed(int value)
 
 void main_window::on_seek_forward()
 {
-    LOG_INFO("seek forward clicked");
+    LOG_DEBUG("seek forward clicked");
     do_seek_relative(15.0);
 }
 
 void main_window::on_seek_backward()
 {
-    LOG_INFO("seek backward clicked");
+    LOG_DEBUG("seek backward clicked");
     do_seek_relative(-15.0);
 }
 
@@ -3234,20 +3247,42 @@ void main_window::do_seek_relative(double seconds)
         return;
     }
 
-    const double current = clock_->get();
-    double target = current + seconds;
+    const double current = pending_seek_target_ >= 0.0 ? pending_seek_target_ : clock_->get();
+    const double target = bounded_seek_target(current + seconds);
 
-    if (target < 0.0)
+    LOG_DEBUG("queueing relative seek current {} target {}", current, target);
+    request_seek(target, true);
+}
+
+void main_window::request_seek(double target, bool deferred)
+{
+    pending_seek_target_ = bounded_seek_target(target);
+    update_seek_display(pending_seek_target_);
+
+    if (deferred)
     {
-        target = 0.0;
+        if (seek_commit_timer_ != nullptr)
+        {
+            seek_commit_timer_->start();
+        }
+        return;
     }
-    if (target > duration_)
+
+    if (seek_commit_timer_ != nullptr)
     {
-        target = duration_ - 1.0;
+        seek_commit_timer_->stop();
+    }
+    execute_seek(pending_seek_target_);
+}
+
+void main_window::execute_seek(double target)
+{
+    if (demuxer_ == nullptr)
+    {
+        return;
     }
 
-    LOG_INFO("seeking relative current {} target {}", current, target);
-
+    target = bounded_seek_target(target);
     if (video_frame_queue_ != nullptr)
     {
         video_frame_queue_->clear();
@@ -3258,6 +3293,45 @@ void main_window::do_seek_relative(double seconds)
     }
 
     demuxer_->seek(target);
+    if (clock_ != nullptr)
+    {
+        int seek_serial = clock_->serial();
+        if (audio_pkt_queue_ != nullptr && demuxer_->audio_index() >= 0)
+        {
+            seek_serial = audio_pkt_queue_->serial();
+        }
+        else if (video_pkt_queue_ != nullptr)
+        {
+            seek_serial = video_pkt_queue_->serial();
+        }
+        clock_->set(target, seek_serial);
+    }
+    update_seek_display(target);
+}
+
+void main_window::update_seek_display(double target)
+{
+    if (slider_seek_ != nullptr)
+    {
+        slider_seek_->setValue(static_cast<int>(target));
+    }
+    if (lbl_time_ != nullptr)
+    {
+        lbl_time_->setText(QString("%1 / %2").arg(format_time(target), format_time(duration_)));
+    }
+}
+
+double main_window::bounded_seek_target(double target) const
+{
+    if (target < 0.0)
+    {
+        return 0.0;
+    }
+    if (duration_ > 0.0 && target > duration_)
+    {
+        return std::max(0.0, duration_ - 1.0);
+    }
+    return target;
 }
 
 void main_window::on_slider_pressed()
@@ -3272,17 +3346,7 @@ void main_window::on_slider_released()
     {
         const auto val = static_cast<double>(slider_seek_->value());
         LOG_INFO("slider released seeking to {}", val);
-
-        if (video_frame_queue_ != nullptr)
-        {
-            video_frame_queue_->clear();
-        }
-        if (audio_frame_queue_ != nullptr)
-        {
-            audio_frame_queue_->clear();
-        }
-
-        demuxer_->seek(val);
+        request_seek(val, false);
         ui_timer_->start();
     }
 }
@@ -3294,7 +3358,7 @@ void main_window::on_update_ui()
         return;
     }
 
-    const double raw_current = clock_->get();
+    const double raw_current = pending_seek_target_ >= 0.0 ? pending_seek_target_ : clock_->get();
     const double current = duration_ > 0.0 ? std::clamp(raw_current, 0.0, duration_) : raw_current;
 
     if (demuxer_ != nullptr && demuxer_->eof_reached() && duration_ > 0.0 && current >= duration_ - 0.1)
@@ -3504,6 +3568,11 @@ void main_window::stop_play()
     current_playback_playlist_id_.clear();
     current_playback_row_ = -1;
     last_saved_progress_second_ = -1;
+    pending_seek_target_ = -1.0;
+    if (seek_commit_timer_ != nullptr)
+    {
+        seek_commit_timer_->stop();
+    }
     this->setWindowTitle("视频播放器");
     if (video_fullscreen_window_ != nullptr)
     {
@@ -3545,6 +3614,11 @@ bool main_window::start_play(const std::string &filepath)
                                       [this, time]()
                                       {
                                           LOG_INFO("UI received seek finish callback time {}", time);
+                                          if (pending_seek_target_ >= 0.0 && std::abs(pending_seek_target_ - time) > 0.5)
+                                          {
+                                              return;
+                                          }
+                                          pending_seek_target_ = -1.0;
                                           if (!slider_seek_->isSliderDown())
                                           {
                                               slider_seek_->setValue(static_cast<int>(time));
@@ -3555,6 +3629,11 @@ bool main_window::start_play(const std::string &filepath)
 
     duration_ = demuxer_->duration();
     last_saved_progress_second_ = -1;
+    pending_seek_target_ = -1.0;
+    if (seek_commit_timer_ != nullptr)
+    {
+        seek_commit_timer_->stop();
+    }
     slider_seek_->setRange(0, static_cast<int>(duration_));
     slider_seek_->setEnabled(true);
     slider_seek_->setValue(0);
