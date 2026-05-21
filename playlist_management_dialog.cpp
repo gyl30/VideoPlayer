@@ -30,7 +30,7 @@ playlist_management_dialog::playlist_management_dialog(const playlist_store &sto
     setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
     setModal(true);
     setWindowTitle("管理播放列表");
-    resize(920, 560);
+    resize(900, 540);
     setObjectName("playlistManagementDialog");
     setStyleSheet(load_stylesheet_resource(":/styles/playlist_management_dialog.qss"));
 
@@ -178,7 +178,7 @@ void playlist_management_dialog::setup_ui()
 
     title_bar_ = new QWidget(this);
     title_bar_->setObjectName("dialogTitleBar");
-    title_bar_->setFixedHeight(42);
+    title_bar_->setFixedHeight(44);
     title_bar_->installEventFilter(this);
 
     auto *title_layout = new QHBoxLayout(title_bar_);
@@ -200,25 +200,25 @@ void playlist_management_dialog::setup_ui()
 
     auto *body = new QWidget(this);
     auto *main_layout = new QHBoxLayout(body);
-    main_layout->setContentsMargins(0, 0, 0, 0);
-    main_layout->setSpacing(12);
+    main_layout->setContentsMargins(12, 12, 12, 12);
+    main_layout->setSpacing(10);
 
     auto *source_panel = new QWidget(this);
     source_panel->setObjectName("playlistSection");
     auto *source_layout = new QVBoxLayout(source_panel);
-    source_layout->setContentsMargins(14, 14, 14, 14);
-    source_layout->setSpacing(10);
-    auto *source_playlist_label = new QLabel("源播放列表", source_panel);
+    source_layout->setContentsMargins(12, 12, 12, 12);
+    source_layout->setSpacing(8);
+    auto *source_playlist_label = new QLabel("来源列表", source_panel);
     source_playlist_label->setProperty("sectionTitle", true);
     source_layout->addWidget(source_playlist_label);
 
     source_playlists_list_ = new QListWidget(source_panel);
     source_playlists_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    source_playlists_list_->setMaximumHeight(160);
+    source_playlists_list_->setMaximumHeight(138);
     install_auto_hide_scrollbar(source_playlists_list_);
     source_layout->addWidget(source_playlists_list_);
 
-    auto *source_file_label = new QLabel("源文件列表", source_panel);
+    auto *source_file_label = new QLabel("来源文件", source_panel);
     source_file_label->setProperty("sectionTitle", true);
     source_layout->addWidget(source_file_label);
     source_songs_list_ = new QListWidget(source_panel);
@@ -229,19 +229,19 @@ void playlist_management_dialog::setup_ui()
 
     auto *action_panel = new QWidget(this);
     action_panel->setObjectName("playlistActionPanel");
-    action_panel->setFixedWidth(190);
+    action_panel->setFixedWidth(168);
     auto *action_layout = new QVBoxLayout(action_panel);
-    action_layout->setContentsMargins(14, 14, 14, 14);
-    action_layout->setSpacing(10);
+    action_layout->setContentsMargins(12, 12, 12, 12);
+    action_layout->setSpacing(8);
 
-    auto *action_title = new QLabel("管理操作", action_panel);
+    auto *action_title = new QLabel("操作", action_panel);
     action_title->setObjectName("actionTitle");
     action_layout->addWidget(action_title);
     action_layout->addSpacing(4);
 
-    btn_copy_ = new QPushButton("复制到目标列表", action_panel);
-    btn_move_ = new QPushButton("移动到目标列表", action_panel);
-    btn_remove_ = new QPushButton("从源列表移除", action_panel);
+    btn_copy_ = new QPushButton("复制到目标", action_panel);
+    btn_move_ = new QPushButton("移动到目标", action_panel);
+    btn_remove_ = new QPushButton("从来源移除", action_panel);
     btn_copy_->setProperty("actionButton", true);
     btn_move_->setProperty("actionButton", true);
     btn_remove_->setProperty("actionButton", true);
@@ -256,9 +256,9 @@ void playlist_management_dialog::setup_ui()
     auto *action_footer = new QWidget(action_panel);
     action_footer->setObjectName("playlistActionFooter");
     auto *action_footer_layout = new QVBoxLayout(action_footer);
-    action_footer_layout->setContentsMargins(0, 12, 0, 0);
+    action_footer_layout->setContentsMargins(0, 10, 0, 0);
     action_footer_layout->setSpacing(8);
-    btn_apply_ = new QPushButton("应用并返回", action_panel);
+    btn_apply_ = new QPushButton("完成", action_panel);
     btn_cancel_ = new QPushButton("取消", action_panel);
     btn_apply_->setProperty("role", "primary");
     btn_cancel_->setProperty("role", "secondary");
@@ -272,19 +272,19 @@ void playlist_management_dialog::setup_ui()
     auto *target_panel = new QWidget(this);
     target_panel->setObjectName("playlistSection");
     auto *target_layout = new QVBoxLayout(target_panel);
-    target_layout->setContentsMargins(14, 14, 14, 14);
-    target_layout->setSpacing(10);
-    auto *target_playlist_label = new QLabel("目标播放列表", target_panel);
+    target_layout->setContentsMargins(12, 12, 12, 12);
+    target_layout->setSpacing(8);
+    auto *target_playlist_label = new QLabel("目标列表", target_panel);
     target_playlist_label->setProperty("sectionTitle", true);
     target_layout->addWidget(target_playlist_label);
 
     target_playlists_list_ = new QListWidget(target_panel);
     target_playlists_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    target_playlists_list_->setMaximumHeight(160);
+    target_playlists_list_->setMaximumHeight(138);
     install_auto_hide_scrollbar(target_playlists_list_);
     target_layout->addWidget(target_playlists_list_);
 
-    auto *target_file_label = new QLabel("目标文件列表", target_panel);
+    auto *target_file_label = new QLabel("目标文件", target_panel);
     target_file_label->setProperty("sectionTitle", true);
     target_layout->addWidget(target_file_label);
     target_songs_list_ = new QListWidget(target_panel);

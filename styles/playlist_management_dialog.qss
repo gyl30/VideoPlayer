@@ -1,89 +1,80 @@
 QDialog#playlistManagementDialog {
-    background: #071728;
-    color: #d8e0ea;
-    border: 1px solid #173b60;
+    background: #171717;
+    color: #f2f2f2;
+    border: 1px solid #2a2a2a;
 }
 
 QWidget#dialogTitleBar {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1b5d92, stop:0.42 #15466f, stop:1 #0b2239);
-    border-bottom: 1px solid #06111c;
+    background: #1f1f1f;
+    border-bottom: 1px solid #2a2a2a;
 }
 
 QLabel#dialogTitleLabel {
-    color: #f2f7fb;
-    font-size: 15px;
-    font-weight: 700;
+    color: #f5f5f5;
+    font-size: 14px;
+    font-weight: 500;
 }
 
 QPushButton#dialogCloseButton {
     background: transparent;
     border: none;
     border-radius: 0;
-    min-width: 42px;
-    max-width: 42px;
-    min-height: 42px;
-    max-height: 42px;
+    min-width: 44px;
+    max-width: 44px;
+    min-height: 44px;
+    max-height: 44px;
     padding: 0;
 }
 
 QPushButton#dialogCloseButton:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: #2a2a2a;
 }
 
 QPushButton#dialogCloseButton:pressed {
-    background: rgba(0, 0, 0, 0.2);
+    background: #303030;
 }
 
-QWidget#playlistSection {
-    background: #0b1929;
-    border: 1px solid #173b60;
-    border-radius: 10px;
-}
-
+QWidget#playlistSection,
 QWidget#playlistActionPanel {
-    background: #0b1929;
-    border: 1px solid #173b60;
-    border-radius: 10px;
+    background: #1f1f1f;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
 }
 
 QWidget#playlistActionFooter {
-    border-top: 1px solid rgba(131, 215, 255, 0.14);
+    border-top: 1px solid #2a2a2a;
 }
 
-QLabel#actionTitle {
-    color: #eef4fa;
-    font-size: 14px;
-    font-weight: 700;
-}
-
+QLabel#actionTitle,
 QLabel[sectionTitle="true"] {
-    color: #eef4fa;
-    font-size: 14px;
-    font-weight: 700;
+    color: #f2f2f2;
+    font-size: 13px;
+    font-weight: 500;
 }
 
 QListWidget {
-    background: #091523;
-    color: #d8e7f6;
-    border: 1px solid #14324f;
-    border-radius: 8px;
+    background: #171717;
+    color: #d8d8d8;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
     outline: none;
-    padding: 5px;
+    padding: 4px;
+    selection-background-color: rgba(7, 193, 96, 0.22);
 }
 
 QListWidget::item {
-    min-height: 34px;
-    padding: 6px 10px;
+    min-height: 30px;
+    padding: 5px 9px;
     border-radius: 6px;
 }
 
 QListWidget::item:hover {
-    background: rgba(255, 255, 255, 0.07);
-    color: #f3f8fc;
+    background: #2a2a2a;
+    color: #f5f5f5;
 }
 
 QListWidget::item:selected {
-    background: #1b5f87;
+    background: rgba(7, 193, 96, 0.24);
     color: #ffffff;
 }
 
@@ -94,13 +85,13 @@ QScrollBar:vertical {
 }
 
 QScrollBar::handle:vertical {
-    background: rgba(131, 215, 255, 0.38);
+    background: rgba(255, 255, 255, 0.24);
     border-radius: 4px;
     min-height: 28px;
 }
 
 QScrollBar::handle:vertical:hover {
-    background: rgba(131, 215, 255, 0.56);
+    background: rgba(255, 255, 255, 0.36);
 }
 
 QScrollBar::add-line:vertical,
@@ -129,50 +120,50 @@ QScrollBar::sub-page:horizontal {
 }
 
 QPushButton {
-    background: rgba(255, 255, 255, 0.06);
-    color: #f5fbff;
+    background: #2a2a2a;
+    color: #f2f2f2;
     border: none;
-    border-radius: 8px;
-    min-height: 40px;
-    padding: 0 14px;
+    border-radius: 6px;
+    min-height: 36px;
+    padding: 0 12px;
 }
 
 QPushButton:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: #303030;
     color: #ffffff;
 }
 
 QPushButton:pressed {
-    background: rgba(8, 29, 49, 0.9);
+    background: #363636;
 }
 
 QPushButton:disabled {
-    color: rgba(245, 251, 255, 0.35);
-    background: rgba(255, 255, 255, 0.03);
+    color: rgba(242, 242, 242, 0.34);
+    background: #242424;
 }
 
 QPushButton[role="primary"] {
-    background: #1e7dbd;
+    background: #07c160;
     color: #ffffff;
 }
 
 QPushButton[role="primary"]:hover {
-    background: #2993da;
+    background: #06ad56;
 }
 
 QPushButton[role="primary"]:pressed {
-    background: #17689f;
+    background: #05964b;
 }
 
 QPushButton[role="secondary"] {
-    background: rgba(255, 255, 255, 0.08);
+    background: #2a2a2a;
 }
 
 QPushButton[actionButton="true"] {
     text-align: left;
-    padding-left: 16px;
+    padding-left: 12px;
 }
 
 QPushButton:default {
-    border: 1px solid #83d7ff;
+    border: 1px solid rgba(7, 193, 96, 0.7);
 }

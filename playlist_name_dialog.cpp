@@ -21,7 +21,7 @@ playlist_name_dialog::playlist_name_dialog(const QString &title,
 {
     setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
     setModal(true);
-    resize(420, 176);
+    resize(380, 168);
     setObjectName("playlistNameDialog");
     setStyleSheet(load_stylesheet_resource(":/styles/playlist_name_dialog.qss"));
 
@@ -82,7 +82,7 @@ void playlist_name_dialog::setup_ui(const QString &title, const QString &label_t
 
     title_bar_ = new QWidget(this);
     title_bar_->setObjectName("dialogTitleBar");
-    title_bar_->setFixedHeight(42);
+    title_bar_->setFixedHeight(44);
 
     auto *title_layout = new QHBoxLayout(title_bar_);
     title_layout->setContentsMargins(14, 0, 0, 0);
@@ -103,8 +103,8 @@ void playlist_name_dialog::setup_ui(const QString &title, const QString &label_t
 
     auto *body = new QWidget(this);
     auto *body_layout = new QVBoxLayout(body);
-    body_layout->setContentsMargins(16, 16, 16, 16);
-    body_layout->setSpacing(12);
+    body_layout->setContentsMargins(16, 14, 16, 14);
+    body_layout->setSpacing(10);
 
     auto *label = new QLabel(label_text, body);
     label->setObjectName("dialogLabel");
@@ -119,10 +119,12 @@ void playlist_name_dialog::setup_ui(const QString &title, const QString &label_t
 
     btn_cancel_ = new QPushButton("取消", button_row);
     btn_cancel_->setObjectName("dialogActionButton");
+    btn_cancel_->setProperty("role", "secondary");
     btn_cancel_->setCursor(Qt::PointingHandCursor);
 
     btn_accept_ = new QPushButton(accept_text, button_row);
     btn_accept_->setObjectName("dialogActionButton");
+    btn_accept_->setProperty("role", "primary");
     btn_accept_->setCursor(Qt::PointingHandCursor);
     btn_accept_->setDefault(false);
     btn_accept_->setAutoDefault(false);

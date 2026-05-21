@@ -1,80 +1,91 @@
 QDialog#playlistNameDialog {
-    background: #071b30;
-    color: #d8e0ea;
-    border: 1px solid #16385d;
+    background: #1f1f1f;
+    color: #f2f2f2;
+    border: 1px solid #2a2a2a;
 }
 
 QWidget#dialogTitleBar {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1c6097, stop:0.48 #143d65, stop:1 #0a2036);
-    border-bottom: 1px solid #06111c;
+    background: #1f1f1f;
+    border-bottom: 1px solid #2a2a2a;
 }
 
 QLabel#dialogTitleLabel {
-    color: #f2f7fb;
-    font-size: 15px;
-    font-weight: 700;
+    color: #f5f5f5;
+    font-size: 14px;
+    font-weight: 500;
 }
 
 QLabel#dialogLabel {
-    color: #eef4fa;
-    font-size: 14px;
+    color: #c9c9c9;
+    font-size: 13px;
 }
 
 QLineEdit {
-    background: #0b1929;
-    color: #f5fbff;
-    border: 1px solid #1e7dbd;
-    border-radius: 4px;
+    background: #2a2a2a;
+    color: #f5f5f5;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
     padding: 8px 10px;
     min-height: 22px;
+    selection-background-color: #07c160;
+}
+
+QLineEdit:focus {
+    border-color: #07c160;
 }
 
 QPushButton#dialogCloseButton {
     background: transparent;
     border: none;
-    min-width: 42px;
-    max-width: 42px;
-    min-height: 42px;
-    max-height: 42px;
+    min-width: 44px;
+    max-width: 44px;
+    min-height: 44px;
+    max-height: 44px;
 }
 
 QPushButton#dialogCloseButton:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: #2a2a2a;
 }
 
 QPushButton#dialogCloseButton:pressed {
-    background: rgba(0, 0, 0, 0.2);
+    background: #303030;
 }
 
 QPushButton#dialogActionButton {
-    background: transparent;
-    color: #f5fbff;
     border: none;
-    border-radius: 2px;
+    border-radius: 6px;
     min-width: 68px;
-    min-height: 38px;
+    min-height: 34px;
     padding: 0 12px;
 }
 
-QPushButton#dialogActionButton:hover {
-    background: rgba(255, 255, 255, 0.12);
+QPushButton#dialogActionButton[role="secondary"] {
+    background: #2a2a2a;
+    color: #f2f2f2;
+}
+
+QPushButton#dialogActionButton[role="secondary"]:hover {
+    background: #303030;
+}
+
+QPushButton#dialogActionButton[role="secondary"]:pressed {
+    background: #363636;
+}
+
+QPushButton#dialogActionButton[role="primary"] {
+    background: #07c160;
     color: #ffffff;
 }
 
-QPushButton#dialogActionButton:pressed {
-    background: rgba(8, 29, 49, 0.9);
+QPushButton#dialogActionButton[role="primary"]:hover {
+    background: #06ad56;
 }
 
-QPushButton#dialogActionButton:default {
-    background: #1e7dbd;
-    color: #ffffff;
-    border: 1px solid #83d7ff;
+QPushButton#dialogActionButton[role="primary"]:pressed {
+    background: #05964b;
 }
 
-QPushButton#dialogActionButton:default:hover {
-    background: #2993da;
-}
-
-QPushButton#dialogActionButton:default:pressed {
-    background: #17689f;
+QPushButton#dialogActionButton[role="primary"]:disabled {
+    background: #343434;
+    color: rgba(242, 242, 242, 0.34);
 }

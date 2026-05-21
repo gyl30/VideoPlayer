@@ -100,7 +100,7 @@ class main_window : public QMainWindow
     void update_playlist_header_buttons();
     void finish_playback();
     void update_control_layout_mode();
-    void rebuild_control_rows(int layout_mode);
+    void rebuild_control_rows();
     void install_playback_shortcuts(QWidget *target);
     void play_selected_playlist_item();
     void show_open_media_menu();

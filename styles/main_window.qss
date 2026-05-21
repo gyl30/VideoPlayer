@@ -1,14 +1,14 @@
 QMainWindow,
 QWidget#rootWidget {
-    background: #05080c;
-    color: #d8e0ea;
+    background: #111111;
+    color: #f2f2f2;
     font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
     font-size: 13px;
 }
 
 QWidget#titleBar {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1c6097, stop:0.48 #143d65, stop:1 #0a2036);
-    border-bottom: 1px solid #06111c;
+    background: #1f1f1f;
+    border-bottom: 1px solid #2a2a2a;
 }
 
 QWidget#titleDragArea {
@@ -24,15 +24,15 @@ QLabel#appBadge {
 }
 
 QLabel#appTitle {
-    color: #f2f7fb;
-    font-size: 20px;
-    font-weight: 700;
+    color: #e7e7e7;
+    font-size: 14px;
+    font-weight: 500;
 }
 
 QLabel#mediaTitle {
-    color: #ffffff;
-    font-size: 20px;
-    font-weight: 700;
+    color: #f5f5f5;
+    font-size: 14px;
+    font-weight: 500;
     padding-left: 6px;
     padding-right: 6px;
 }
@@ -46,43 +46,43 @@ QPushButton#titleToolButton,
 QPushButton#windowButton {
     background: transparent;
     border: none;
-    color: #ecf8ff;
-    font-size: 23px;
-    font-weight: 700;
+    color: #d8d8d8;
+    font-size: 18px;
+    font-weight: 500;
     min-width: 44px;
     max-width: 44px;
-    min-height: 48px;
-    max-height: 48px;
+    min-height: 44px;
+    max-height: 44px;
 }
 
 QPushButton#titleToolButton:hover,
 QPushButton#windowButton:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: #2a2a2a;
 }
 
 QPushButton#titleToolButton:pressed,
 QPushButton#windowButton:pressed {
-    background: rgba(0, 0, 0, 0.2);
+    background: #303030;
 }
 
 QPushButton#closeButton {
     background: transparent;
     border: none;
-    color: #ecf8ff;
-    font-size: 23px;
-    font-weight: 700;
+    color: #d8d8d8;
+    font-size: 18px;
+    font-weight: 500;
     min-width: 44px;
     max-width: 44px;
-    min-height: 48px;
-    max-height: 48px;
+    min-height: 44px;
+    max-height: 44px;
 }
 
 QPushButton#closeButton:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: #e81123;
 }
 
 QPushButton#closeButton:pressed {
-    background: rgba(0, 0, 0, 0.2);
+    background: #c50f1f;
 }
 
 QWidget#contentWidget {
@@ -99,8 +99,8 @@ QOpenGLWidget#videoSurface {
 }
 
 QFrame#playlistPanel {
-    background: #0b1929;
-    border-left: 1px solid #16385d;
+    background: #1f1f1f;
+    border-left: 1px solid #2a2a2a;
 }
 
 QWidget#playlistHeaderGroup {
@@ -111,11 +111,11 @@ QPushButton#playlistHeaderButton {
     background: transparent;
     border: none;
     min-height: 32px;
-    border-radius: 4px;
+    border-radius: 6px;
 }
 
 QPushButton#playlistHeaderButton:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: #2a2a2a;
 }
 
 QPushButton#playlistHeaderButton:disabled {
@@ -123,13 +123,13 @@ QPushButton#playlistHeaderButton:disabled {
 }
 
 QPushButton#playlistHeaderButton:pressed {
-    background: rgba(0, 0, 0, 0.18);
+    background: #303030;
 }
 
 QTreeWidget#playlistView {
     background: transparent;
     border: none;
-    color: #b8c4cf;
+    color: #c9c9c9;
     outline: none;
 }
 
@@ -137,16 +137,16 @@ QTreeWidget#playlistView::item {
     height: 34px;
     padding-left: 6px;
     padding-right: 10px;
-    border-radius: 4px;
+    border-radius: 6px;
 }
 
 QTreeWidget#playlistView::item:hover {
-    background: #1b2631;
-    color: #f3f8fc;
+    background: #2a2a2a;
+    color: #f5f5f5;
 }
 
 QTreeWidget#playlistView::item:selected {
-    background: #174a68;
+    background: rgba(7, 193, 96, 0.22);
     color: #ffffff;
 }
 
@@ -157,13 +157,13 @@ QTreeWidget#playlistView QScrollBar:vertical {
 }
 
 QTreeWidget#playlistView QScrollBar::handle:vertical {
-    background: rgba(131, 215, 255, 0.38);
+    background: rgba(255, 255, 255, 0.24);
     border-radius: 4px;
     min-height: 28px;
 }
 
 QTreeWidget#playlistView QScrollBar::handle:vertical:hover {
-    background: rgba(131, 215, 255, 0.56);
+    background: rgba(255, 255, 255, 0.36);
 }
 
 QTreeWidget#playlistView QScrollBar::add-line:vertical,
@@ -177,80 +177,80 @@ QTreeWidget#playlistView QScrollBar::sub-page:vertical {
 }
 
 QWidget#controlPanel {
-    background: #071b30;
-    border-top: 1px solid #2c74ac;
+    background: #1f1f1f;
+    border-top: 1px solid #2a2a2a;
 }
 
 QWidget#seekRow {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #020406, stop:1 #07101a);
+    background: #171717;
     border: none;
 }
 
 QWidget#controlBar {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1c6097, stop:0.28 #174d7e, stop:1 #0b2138);
+    background: #1f1f1f;
 }
 
 QPushButton#seekEdgeButton {
     background: transparent;
     border: none;
-    color: #eef8ff;
+    color: #f2f2f2;
     font-size: 18px;
-    font-weight: 700;
+    font-weight: 500;
     min-width: 28px;
     max-width: 28px;
-    min-height: 24px;
-    max-height: 24px;
+    min-height: 28px;
+    max-height: 28px;
 }
 
 QPushButton#seekEdgeButton:hover {
     color: #ffffff;
-    background: rgba(255, 255, 255, 0.08);
+    background: #2a2a2a;
 }
 
 QPushButton#controlButton,
 QPushButton#controlButtonWide {
     background: transparent;
-    color: #f5fbff;
+    color: #f2f2f2;
     border: none;
-    border-radius: 2px;
-    min-height: 46px;
+    border-radius: 6px;
+    min-height: 36px;
 }
 
 QPushButton#controlButton {
-    min-width: 44px;
-    max-width: 44px;
-    font-size: 28px;
-    font-weight: 700;
+    min-width: 38px;
+    max-width: 46px;
+    font-size: 20px;
+    font-weight: 500;
 }
 
 QPushButton#controlButtonWide {
-    min-width: 62px;
-    padding-left: 10px;
-    padding-right: 10px;
+    min-width: 54px;
+    padding-left: 8px;
+    padding-right: 8px;
 }
 
 QPushButton#controlButton:hover,
 QPushButton#controlButtonWide:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: #2a2a2a;
     color: #ffffff;
 }
 
 QPushButton#controlButton:pressed,
 QPushButton#controlButtonWide:pressed {
-    background: rgba(8, 29, 49, 0.9);
+    background: #303030;
 }
 
 QPushButton#controlButtonWide:checked {
-    background: #1e7dbd;
-    border-color: #83d7ff;
+    background: #07c160;
+    border-color: #07c160;
     color: #ffffff;
 }
 
 QLabel#timeLabel {
-    color: #eefaff;
+    color: #d8d8d8;
     font-family: Consolas, "Microsoft YaHei", monospace;
-    font-size: 22px;
-    font-weight: 500;
+    font-size: 15px;
+    font-weight: 400;
 }
 
 QLabel#volumeIcon {
@@ -261,68 +261,68 @@ QLabel#volumeIcon {
 QPushButton#toolBlockButton {
     background: transparent;
     border: none;
-    color: #f5fbff;
-    border-radius: 2px;
-    min-width: 56px;
-    max-width: 56px;
-    min-height: 48px;
-    max-height: 48px;
+    color: #f2f2f2;
+    border-radius: 6px;
+    min-width: 40px;
+    max-width: 40px;
+    min-height: 36px;
+    max-height: 36px;
     font-size: 18px;
 }
 
 QPushButton#toolBlockButton:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: #2a2a2a;
     color: #ffffff;
 }
 
 QPushButton#toolBlockButton:disabled {
-    color: rgba(245, 251, 255, 0.32);
+    color: rgba(242, 242, 242, 0.32);
     background: transparent;
 }
 
 QPushButton#toolBlockButton:checked {
-    background: rgba(36, 125, 189, 0.82);
+    background: #07c160;
     color: #ffffff;
 }
 
 QPushButton#toolBlockButton:checked:hover {
-    background: rgba(51, 145, 213, 0.9);
+    background: #06ad56;
     color: #ffffff;
 }
 
 QPushButton#toolBlockButton:pressed {
-    background: rgba(8, 29, 49, 0.9);
+    background: #303030;
 }
 
 QSlider::groove:horizontal {
-    height: 6px;
-    background: #10263b;
+    height: 4px;
+    background: #3a3a3a;
     border-radius: 3px;
 }
 
 QSlider::sub-page:horizontal {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1b5f87, stop:0.62 #1e7dbd, stop:1 #83d7ff);
+    background: #07c160;
     border-radius: 3px;
 }
 
 QSlider::add-page:horizontal {
-    background: #14324f;
+    background: #3a3a3a;
     border-radius: 3px;
 }
 
 QSlider#seekSlider::handle:horizontal {
-    background: #eef8ff;
-    border: 1px solid #83d7ff;
-    width: 8px;
-    margin: -1px 0;
-    border-radius: 4px;
+    background: #ffffff;
+    border: 2px solid #07c160;
+    width: 10px;
+    margin: -4px 0;
+    border-radius: 6px;
 }
 
 QSlider#seekSlider::handle:horizontal:hover {
-    background: #f7fcff;
+    background: #f7fff9;
 }
 
 QSlider#seekSlider::handle:horizontal:pressed {
-    background: #d9eeff;
-    border-color: #5fbef1;
+    background: #e7f8ee;
+    border-color: #06ad56;
 }
