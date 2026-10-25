@@ -40,6 +40,7 @@
 #include "playlist_management_dialog.h"
 #include "style_loader.h"
 #include "volumemeter.h"
+#include "scoped_exit.h"
 
 namespace
 {
@@ -3413,7 +3414,7 @@ void main_window::finish_playback()
 
 void main_window::stop_play()
 {
-    if (!playing_)
+    if (demuxer_ == nullptr)
     {
         return;
     }
@@ -3424,6 +3425,9 @@ void main_window::stop_play()
     playing_ = false;
     paused_ = false;
     ui_timer_->stop();
+    slider_seek_->setEnabled(false);
+    btn_play_pause_->setIcon(QIcon(":/icons/play.svg"));
+    btn_play_pause_->setToolTip("播放/暂停");
 
     LOG_INFO("aborting queues");
     if (video_decoder_ != nullptr)
@@ -3530,6 +3534,13 @@ void main_window::stop_play()
 bool main_window::start_play(const std::string &filepath)
 {
     LOG_INFO("starting play for file {}", filepath);
+    DEFER(
+        if (!playing_)
+        {
+            stop_play();
+            duration_ = 0.0;
+            update_seek_display(0.0);
+        });
     const uint64_t playback_generation = ++playback_generation_;
     video_pkt_queue_ = std::make_unique<safe_queue<std::shared_ptr<media_packet>>>(100);
     audio_pkt_queue_ = std::make_unique<safe_queue<std::shared_ptr<media_packet>>>(100);

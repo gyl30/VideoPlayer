@@ -210,8 +210,6 @@ void decoder::run()
     std::shared_ptr<media_packet> pkt;
     int current_serial = 0;
 
-    aborted_.store(false);
-
     while (!aborted_.load())
     {
         if (!packet_queue_->pop(pkt))

@@ -1,8 +1,53 @@
 #include <QApplication>
 #include <QTemporaryDir>
+#include <QProcess>
 #include <QtTest>
 #include "playlist_store.h"
 #include "main_window.h"
+#include "log.h"
+
+#ifdef TEST_FFMPEG_FAILURES
+namespace
+{
+std::atomic<bool> fail_stream_info{false};
+std::atomic<int> fail_codec_type{-1};
+std::atomic<int> closed_inputs{0};
+}
+
+extern "C"
+{
+int __real_avformat_find_stream_info(AVFormatContext *, AVDictionary **);
+void __real_avformat_close_input(AVFormatContext **);
+int __real_avcodec_open2(AVCodecContext *, const AVCodec *, AVDictionary **);
+
+int __wrap_avformat_find_stream_info(AVFormatContext *context, AVDictionary **options)
+{
+    if (fail_stream_info.load())
+    {
+        return AVERROR(EIO);
+    }
+    return __real_avformat_find_stream_info(context, options);
+}
+
+void __wrap_avformat_close_input(AVFormatContext **context)
+{
+    if (*context != nullptr)
+    {
+        ++closed_inputs;
+    }
+    __real_avformat_close_input(context);
+}
+
+int __wrap_avcodec_open2(AVCodecContext *context, const AVCodec *codec, AVDictionary **options)
+{
+    if (context->codec_type == fail_codec_type.load())
+    {
+        return AVERROR(EINVAL);
+    }
+    return __real_avcodec_open2(context, codec, options);
+}
+}
+#endif
 
 class player_tests : public QObject
 {
@@ -10,13 +55,22 @@ class player_tests : public QObject
 
    private slots:
     void initTestCase();
+    void init();
     void control_layout();
     void remove_rows();
     void sync_stop_data();
     void sync_stop();
+    void stop_before_decode();
+#ifdef TEST_FFMPEG_FAILURES
+    void init_failure_data();
+    void init_failure();
+#endif
 
    private:
+    void set_playlist(const QStringList &paths);
     QTemporaryDir directory_;
+    QString audio_path_;
+    QString video_path_;
 };
 
 void player_tests::sync_stop_data()
@@ -60,7 +114,106 @@ void player_tests::initTestCase()
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, directory_.path());
     QSettings settings("gyl30", "VideoPlayer");
     QVERIFY(settings.fileName().startsWith(directory_.path()));
+    set_level("warn");
+
+    audio_path_ = directory_.filePath("audio.wav");
+    video_path_ = directory_.filePath("video.mkv");
+    QProcess ffmpeg;
+    ffmpeg.start("ffmpeg", {"-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=4",
+                            "-y", audio_path_});
+    QVERIFY(ffmpeg.waitForFinished());
+    QCOMPARE(ffmpeg.exitCode(), 0);
+    ffmpeg.start("ffmpeg", {"-v", "error", "-f", "lavfi", "-i", "testsrc2=size=64x48:rate=10:duration=1",
+                            "-f", "lavfi", "-i", "sine=duration=1", "-c:v", "mpeg4", "-c:a", "pcm_s16le",
+                            "-y", video_path_});
+    QVERIFY(ffmpeg.waitForFinished());
+    QCOMPARE(ffmpeg.exitCode(), 0);
 }
+
+void player_tests::init()
+{
+    QSettings settings("gyl30", "VideoPlayer");
+    settings.clear();
+#ifdef TEST_FFMPEG_FAILURES
+    fail_stream_info.store(false);
+    fail_codec_type.store(-1);
+    closed_inputs.store(0);
+#endif
+}
+
+void player_tests::set_playlist(const QStringList &paths)
+{
+    playlist_store store;
+    store.ensure_default_playlist();
+    for (const QString &path : paths)
+    {
+        store.add_path(store.active_playlist_id(), path);
+    }
+    QSettings settings("gyl30", "VideoPlayer");
+    store.save(settings);
+}
+
+void player_tests::stop_before_decode()
+{
+    safe_queue<std::shared_ptr<media_packet>> packets;
+    safe_queue<std::shared_ptr<media_frame>> frames;
+    demuxer source;
+    QVERIFY(source.open(audio_path_.toStdString(), nullptr, &packets));
+    decoder audio;
+    QVERIFY(audio.open(source.codec_par(source.audio_index()), &packets, &frames, "Test"));
+    audio.stop();
+    packets.abort();
+    frames.abort();
+    std::atomic<bool> finished{false};
+    std::thread worker([&]() { audio.run(); finished.store(true); });
+    QTest::qSleep(100);
+    const bool stopped = finished.load();
+    audio.stop();
+    worker.join();
+    QVERIFY(stopped);
+}
+
+#ifdef TEST_FFMPEG_FAILURES
+void player_tests::init_failure_data()
+{
+    QTest::addColumn<int>("stage");
+    QTest::newRow("读取流信息") << 0;
+    QTest::newRow("视频解码器") << 1;
+    QTest::newRow("音频解码器") << 2;
+    QTest::newRow("音频设备") << 3;
+}
+
+void player_tests::init_failure()
+{
+    QFETCH(int, stage);
+    set_playlist({video_path_, audio_path_});
+    main_window window;
+    fail_stream_info.store(stage == 0);
+    fail_codec_type.store(stage == 1 ? AVMEDIA_TYPE_VIDEO : stage == 2 ? AVMEDIA_TYPE_AUDIO : -1);
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    qputenv("SDL_AUDIODRIVER", stage == 3 ? "invalid-test-driver" : "dummy");
+    QTimer::singleShot(0, []()
+    {
+        for (QWidget *widget : QApplication::topLevelWidgets())
+        {
+            if (auto *dialog = qobject_cast<QMessageBox *>(widget))
+            {
+                dialog->accept();
+            }
+        }
+    });
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_toggle_pause", Qt::DirectConnection));
+    fail_stream_info.store(false);
+    fail_codec_type.store(-1);
+    qputenv("SDL_AUDIODRIVER", "dummy");
+    QCOMPARE(closed_inputs.load(), 1);
+    QVERIFY(!window.findChild<QSlider *>("seekSlider")->isEnabled());
+    QCOMPARE(window.findChild<QLabel *>("timeLabel")->text(), QString("00:00:00 / 00:00:00"));
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_play_next", Qt::DirectConnection));
+    QVERIFY(window.findChild<QSlider *>("seekSlider")->isEnabled());
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_stop_pressed", Qt::DirectConnection));
+}
+#endif
 
 void player_tests::control_layout()
 {

@@ -13,6 +13,14 @@ foreach(property COMPILE_OPTIONS INCLUDE_DIRECTORIES LINK_DIRECTORIES LINK_LIBRA
     endif()
 endforeach()
 target_link_libraries(player_tests PRIVATE Qt6::Test)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_definitions(player_tests PRIVATE TEST_FFMPEG_FAILURES)
+    target_link_options(player_tests PRIVATE
+        -Wl,--wrap=avformat_find_stream_info
+        -Wl,--wrap=avformat_close_input
+        -Wl,--wrap=avcodec_open2
+    )
+endif()
 
 add_test(NAME player_tests COMMAND player_tests)
 set_tests_properties(player_tests PROPERTIES
