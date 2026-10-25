@@ -29,7 +29,6 @@ class video_sync_thread : public QThread
     void frame_ready(std::shared_ptr<media_frame> frame);
 
    private:
-    bool stop_ = false;
     video_scaler scaler_;
     av_clock *clock_ = nullptr;
     AVRational time_base_{0, 1};

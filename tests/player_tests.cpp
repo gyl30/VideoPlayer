@@ -12,10 +12,45 @@ class player_tests : public QObject
     void initTestCase();
     void control_layout();
     void remove_rows();
+    void sync_stop_data();
+    void sync_stop();
 
    private:
     QTemporaryDir directory_;
 };
+
+void player_tests::sync_stop_data()
+{
+    QTest::addColumn<int>("mode");
+    QTest::newRow("等待空队列") << 0;
+    QTest::newRow("暂停") << 1;
+    QTest::newRow("等待未来帧") << 2;
+}
+
+void player_tests::sync_stop()
+{
+    QFETCH(int, mode);
+    safe_queue<std::shared_ptr<media_frame>> frames;
+    safe_queue<std::shared_ptr<media_packet>> packets;
+    av_clock clock;
+    clock.set(0.0, packets.serial());
+    video_sync_thread sync(&frames, &packets, AVRational{1, 1}, &clock);
+    if (mode == 1)
+    {
+        sync.paused(true);
+    }
+    if (mode == 2)
+    {
+        auto frame = std::make_shared<media_frame>();
+        frame->raw()->pts = 60;
+        QVERIFY(frames.push(frame));
+    }
+    sync.start();
+    QTest::qSleep(30);
+    frames.abort();
+    sync.stop();
+    QVERIFY(sync.wait(1000));
+}
 
 void player_tests::initTestCase()
 {

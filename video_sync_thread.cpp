@@ -14,7 +14,6 @@ video_sync_thread::video_sync_thread(safe_queue<std::shared_ptr<media_frame>> *f
 void video_sync_thread::stop()
 {
     LOG_INFO("video sync thread stop requested");
-    stop_ = true;
     this->requestInterruption();
 }
 
@@ -30,7 +29,7 @@ void video_sync_thread::run()
     std::shared_ptr<media_frame> frame;
     auto render_frame = std::make_shared<media_frame>();
 
-    while (!stop_ && !isInterruptionRequested())
+    while (!isInterruptionRequested())
     {
         if (paused_.load())
         {
@@ -70,7 +69,7 @@ void video_sync_thread::run()
         const double pts = timestamp == AV_NOPTS_VALUE ? clock_->get() : static_cast<double>(timestamp) * av_q2d(time_base_);
         bool discard_frame = false;
 
-        while (!stop_ && !isInterruptionRequested())
+        while (!isInterruptionRequested())
         {
             if (paused_.load())
             {
@@ -111,7 +110,7 @@ void video_sync_thread::run()
             }
         }
 
-        if (stop_ || isInterruptionRequested())
+        if (isInterruptionRequested())
         {
             break;
         }
