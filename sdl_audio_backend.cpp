@@ -106,6 +106,7 @@ bool sdl_audio_backend::init(safe_queue<std::shared_ptr<media_frame>> *frame_que
     if (audio_dev_ == 0)
     {
         LOG_ERROR("sdl open audio device failed");
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
         return false;
     }
 
@@ -185,6 +186,7 @@ void sdl_audio_backend::close()
     {
         SDL_CloseAudioDevice(audio_dev_);
         audio_dev_ = 0;
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
     }
 
     if (process_thread_.joinable())

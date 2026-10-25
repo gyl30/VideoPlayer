@@ -14,6 +14,7 @@ std::atomic<int> fail_codec_type{-1};
 std::atomic<int> closed_inputs{0};
 std::atomic<int> seek_calls{0};
 std::atomic<bool> fail_seek{false};
+std::atomic<bool> fail_audio_device{false};
 }
 
 extern "C"
@@ -22,6 +23,7 @@ int __real_avformat_find_stream_info(AVFormatContext *, AVDictionary **);
 void __real_avformat_close_input(AVFormatContext **);
 int __real_avcodec_open2(AVCodecContext *, const AVCodec *, AVDictionary **);
 int __real_avformat_seek_file(AVFormatContext *, int, int64_t, int64_t, int64_t, int);
+SDL_AudioDeviceID __real_SDL_OpenAudioDevice(const char *, int, const SDL_AudioSpec *, SDL_AudioSpec *, int);
 
 int __wrap_avformat_find_stream_info(AVFormatContext *context, AVDictionary **options)
 {
@@ -56,6 +58,12 @@ int __wrap_avformat_seek_file(AVFormatContext *context, int stream, int64_t min,
     ++seek_calls;
     return result;
 }
+
+SDL_AudioDeviceID __wrap_SDL_OpenAudioDevice(const char *device, int capture, const SDL_AudioSpec *wanted,
+                                            SDL_AudioSpec *obtained, int changes)
+{
+    return fail_audio_device.load() ? 0 : __real_SDL_OpenAudioDevice(device, capture, wanted, obtained, changes);
+}
 }
 #endif
 
@@ -71,6 +79,7 @@ class player_tests : public QObject
     void sync_stop_data();
     void sync_stop();
     void stop_before_decode();
+    void audio_subsystem();
 #ifdef TEST_FFMPEG_FAILURES
     void init_failure_data();
     void init_failure();
@@ -156,6 +165,7 @@ void player_tests::init()
     closed_inputs.store(0);
     seek_calls.store(0);
     fail_seek.store(false);
+    fail_audio_device.store(false);
 #endif
 }
 
@@ -189,6 +199,19 @@ void player_tests::stop_before_decode()
     audio.stop();
     worker.join();
     QVERIFY(stopped);
+}
+
+void player_tests::audio_subsystem()
+{
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    safe_queue<std::shared_ptr<media_packet>> packets;
+    safe_queue<std::shared_ptr<media_frame>> frames;
+    av_clock clock;
+    sdl_audio_backend audio;
+    QVERIFY(audio.init(&frames, &packets, AVRational{1, 44100}, &clock));
+    QVERIFY(SDL_WasInit(SDL_INIT_AUDIO) != 0);
+    audio.close();
+    QCOMPARE(SDL_WasInit(SDL_INIT_AUDIO), Uint32(0));
 }
 
 #ifdef TEST_FFMPEG_FAILURES
@@ -259,6 +282,7 @@ void player_tests::init_failure_data()
     QTest::newRow("视频解码器") << 1;
     QTest::newRow("音频解码器") << 2;
     QTest::newRow("音频设备") << 3;
+    QTest::newRow("音频驱动") << 4;
 }
 
 void player_tests::init_failure()
@@ -269,7 +293,8 @@ void player_tests::init_failure()
     fail_stream_info.store(stage == 0);
     fail_codec_type.store(stage == 1 ? AVMEDIA_TYPE_VIDEO : stage == 2 ? AVMEDIA_TYPE_AUDIO : -1);
     SDL_QuitSubSystem(SDL_INIT_AUDIO);
-    qputenv("SDL_AUDIODRIVER", stage == 3 ? "invalid-test-driver" : "dummy");
+    qputenv("SDL_AUDIODRIVER", stage == 4 ? "invalid-test-driver" : "dummy");
+    fail_audio_device.store(stage == 3);
     QTimer::singleShot(0, []()
     {
         for (QWidget *widget : QApplication::topLevelWidgets())
@@ -283,8 +308,10 @@ void player_tests::init_failure()
     QVERIFY(QMetaObject::invokeMethod(&window, "on_toggle_pause", Qt::DirectConnection));
     fail_stream_info.store(false);
     fail_codec_type.store(-1);
+    fail_audio_device.store(false);
     qputenv("SDL_AUDIODRIVER", "dummy");
     QCOMPARE(closed_inputs.load(), 1);
+    QCOMPARE(SDL_WasInit(SDL_INIT_AUDIO), Uint32(0));
     QVERIFY(!window.findChild<QSlider *>("seekSlider")->isEnabled());
     QCOMPARE(window.findChild<QLabel *>("timeLabel")->text(), QString("00:00:00 / 00:00:00"));
     QVERIFY(QMetaObject::invokeMethod(&window, "on_play_next", Qt::DirectConnection));
