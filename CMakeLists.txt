@@ -110,7 +110,6 @@ pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
     libavcodec 
     libavutil 
     libavfilter
-    libswresample 
     libswscale
 )
 
@@ -128,7 +127,6 @@ add_executable(VideoPlayer
     style_loader.cpp
     main_window.cpp 
     volumemeter.cpp
-    audio_resampler.cpp
     sdl_audio_backend.cpp
     video_sync_thread.cpp
     resources.qrc

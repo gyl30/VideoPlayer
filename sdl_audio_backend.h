@@ -15,12 +15,18 @@
 #include "av_clock.h"
 #include "safe_queue.h"
 #include "media_objects.h"
-#include "audio_resampler.h"
 
 extern "C"
 {
 #include <libavfilter/avfilter.h>
+#include <libavutil/channel_layout.h>
 }
+
+#if LIBAVUTIL_VERSION_MAJOR >= 57
+using audio_channel_layout = AVChannelLayout;
+#else
+using audio_channel_layout = uint64_t;
+#endif
 
 class sdl_audio_backend
 {
