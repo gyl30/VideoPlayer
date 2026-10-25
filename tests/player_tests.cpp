@@ -2,14 +2,60 @@
 #include <QTemporaryDir>
 #include <QtTest>
 #include "playlist_store.h"
+#include "main_window.h"
 
 class player_tests : public QObject
 {
     Q_OBJECT
 
    private slots:
+    void initTestCase();
+    void control_layout();
     void remove_rows();
+
+   private:
+    QTemporaryDir directory_;
 };
+
+void player_tests::initTestCase()
+{
+    QVERIFY(directory_.isValid());
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, directory_.path());
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, directory_.path());
+    QSettings settings("gyl30", "VideoPlayer");
+    QVERIFY(settings.fileName().startsWith(directory_.path()));
+}
+
+void player_tests::control_layout()
+{
+    main_window window;
+    auto *bar = window.findChild<QWidget *>("controlBar");
+    QVERIFY(bar != nullptr);
+    const auto rows = bar->findChildren<QHBoxLayout *>();
+    QCOMPARE(rows.size(), 1);
+    QStringList controls;
+    for (int i = 0; i < rows.front()->count(); ++i)
+    {
+        QWidget *widget = rows.front()->itemAt(i)->widget();
+        if (widget == nullptr)
+        {
+            continue;
+        }
+        controls.append(widget->toolTip().isEmpty() ? widget->objectName() : widget->toolTip());
+    }
+    QCOMPARE(controls, QStringList({"timeLabel", "播放速度：1x", "volumeIcon", "音量", "停止", "播放上一个",
+                                   "播放/暂停", "播放下一个", "隐藏视频画面，仅播放音频",
+                                   "开启后新打开的文件优先使用硬件解码，失败时回退软解", "打开媒体", "当前媒体没有视频画面", "显示播放列表"}));
+    QCOMPARE(window.findChild<QWidget *>("controlPanel")->height(), 96);
+    QCOMPARE(window.findChild<QLabel *>("timeLabel")->minimumWidth(), 168);
+    for (const QSize &size : {QSize(960, 480), QSize(1600, 900)})
+    {
+        window.resize(size);
+        QCOMPARE(rows.front()->count(), 17);
+        QCOMPARE(window.findChild<QWidget *>("controlPanel")->height(), 96);
+    }
+}
 
 void player_tests::remove_rows()
 {

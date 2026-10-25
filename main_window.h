@@ -99,8 +99,6 @@ class main_window : public QMainWindow
     void update_playlist_buttons();
     void update_playlist_header_buttons();
     void finish_playback();
-    void update_control_layout_mode();
-    void rebuild_control_rows();
     void install_playback_shortcuts(QWidget *target);
     void play_selected_playlist_item();
     void show_open_media_menu();
@@ -182,12 +180,6 @@ class main_window : public QMainWindow
     QFrame *playlist_panel_ = nullptr;
     QTreeWidget *playlist_view_ = nullptr;
     QWidget *control_panel_ = nullptr;
-    QWidget *primary_control_row_widget_ = nullptr;
-    QWidget *secondary_control_row_widget_ = nullptr;
-    QWidget *tertiary_control_row_widget_ = nullptr;
-    QHBoxLayout *primary_control_row_layout_ = nullptr;
-    QHBoxLayout *secondary_control_row_layout_ = nullptr;
-    QHBoxLayout *tertiary_control_row_layout_ = nullptr;
 
     QPushButton *btn_backward_ = nullptr;
     QPushButton *btn_play_pause_ = nullptr;
@@ -209,7 +201,6 @@ class main_window : public QMainWindow
     bool dragging_title_bar_ = false;
     bool closing_ = false;
     bool playlist_scrollbar_visible_ = false;
-    int control_layout_mode_ = -1;
     QPoint drag_start_global_pos_;
     QPoint drag_start_window_pos_;
     int drag_press_window_x_ = 0;

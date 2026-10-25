@@ -702,28 +702,16 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     control_bar_layout->setSpacing(0);
     apply_windows_fallback_background(control_bar, QColor("#1f1f1f"));
 
-    primary_control_row_widget_ = new QWidget(control_bar);
-    primary_control_row_layout_ = new QHBoxLayout(primary_control_row_widget_);
-    primary_control_row_layout_->setContentsMargins(0, 0, 0, 0);
-    primary_control_row_layout_->setSpacing(10);
-
-    secondary_control_row_widget_ = new QWidget(control_bar);
-    secondary_control_row_layout_ = new QHBoxLayout(secondary_control_row_widget_);
-    secondary_control_row_layout_->setContentsMargins(0, 0, 0, 0);
-    secondary_control_row_layout_->setSpacing(8);
-
-    tertiary_control_row_widget_ = new QWidget(control_bar);
-    tertiary_control_row_layout_ = new QHBoxLayout(tertiary_control_row_widget_);
-    tertiary_control_row_layout_->setContentsMargins(0, 0, 0, 0);
-    tertiary_control_row_layout_->setSpacing(8);
-
-    control_bar_layout->addWidget(primary_control_row_widget_);
-    control_bar_layout->addWidget(secondary_control_row_widget_);
-    control_bar_layout->addWidget(tertiary_control_row_widget_);
+    auto *control_row = new QWidget(control_bar);
+    auto *control_row_layout = new QHBoxLayout(control_row);
+    control_row_layout->setContentsMargins(0, 0, 0, 0);
+    control_row_layout->setSpacing(6);
+    control_bar_layout->addWidget(control_row);
 
     lbl_time_ = new QLabel("00:00:00 / 00:00:00", this);
     lbl_time_->setObjectName("timeLabel");
-    lbl_time_->setMinimumWidth(210);
+    lbl_time_->setMinimumWidth(168);
+    lbl_time_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     lbl_time_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     btn_stop_ = new QPushButton(QIcon(":/icons/stop.svg"), QString(), this);
@@ -760,7 +748,7 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     volume_meter_->setObjectName("volumeMeter");
     volume_meter_->setRange(0, 100);
     volume_meter_->setValue(80);
-    volume_meter_->setFixedSize(68, 10);
+    volume_meter_->setFixedSize(70, 10);
     volume_meter_->setOrientation(Qt::Horizontal);
     volume_meter_->setToolTip("音量");
 
@@ -836,6 +824,41 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
                 });
     }
     update_playback_rate_button();
+
+    for (QPushButton *button : {btn_stop_, btn_backward_, btn_forward_})
+    {
+        button->setFixedSize(QSize(38, 38));
+    }
+    btn_play_pause_->setFixedSize(QSize(46, 42));
+
+    for (QPushButton *button : {btn_audio_only_, btn_hardware_decode_})
+    {
+        button->setFixedSize(QSize(58, 36));
+    }
+    btn_playback_rate_->setFixedSize(QSize(54, 36));
+
+    for (QPushButton *button : {btn_open_media_, btn_video_fullscreen_, btn_playlist_})
+    {
+        button->setFixedSize(QSize(40, 36));
+    }
+
+    control_row_layout->addWidget(lbl_time_);
+    control_row_layout->addSpacing(6);
+    control_row_layout->addWidget(btn_playback_rate_);
+    control_row_layout->addWidget(lbl_vol_icon_low_);
+    control_row_layout->addWidget(volume_meter_);
+    control_row_layout->addStretch(1);
+    control_row_layout->addWidget(btn_stop_);
+    control_row_layout->addWidget(btn_backward_);
+    control_row_layout->addWidget(btn_play_pause_);
+    control_row_layout->addWidget(btn_forward_);
+    control_row_layout->addStretch(1);
+    control_row_layout->addWidget(btn_audio_only_);
+    control_row_layout->addWidget(btn_hardware_decode_);
+    control_row_layout->addSpacing(4);
+    control_row_layout->addWidget(btn_open_media_);
+    control_row_layout->addWidget(btn_video_fullscreen_);
+    control_row_layout->addWidget(btn_playlist_);
 
     control_layout->addWidget(control_bar, 1);
 
@@ -932,7 +955,9 @@ main_window::main_window(QWidget *parent) : QMainWindow(parent)
     update_screenshot_button();
     update_playlist_buttons();
     update_playlist_header_buttons();
-    update_control_layout_mode();
+    QFont time_font = lbl_time_->font();
+    time_font.setPointSize(15);
+    lbl_time_->setFont(time_font);
     QTimer::singleShot(0,
                        this,
                        [this]()
@@ -1283,7 +1308,6 @@ void main_window::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
     update_media_title_text();
-    update_control_layout_mode();
     update_media_info_overlay_geometry();
 }
 
@@ -2948,105 +2972,6 @@ void main_window::update_playlist_header_buttons()
         btn_playlist_manage_->setEnabled(playlist_store_.playlist_count() > 0);
         btn_playlist_manage_->setToolTip("管理播放列表");
     }
-}
-
-void main_window::update_control_layout_mode()
-{
-    if (primary_control_row_layout_ == nullptr || secondary_control_row_layout_ == nullptr || tertiary_control_row_layout_ == nullptr)
-    {
-        return;
-    }
-
-    if (control_layout_mode_ == 0 && primary_control_row_layout_->count() > 0)
-    {
-        return;
-    }
-
-    control_layout_mode_ = 0;
-    rebuild_control_rows();
-}
-
-void main_window::rebuild_control_rows()
-{
-    if (primary_control_row_layout_ == nullptr || secondary_control_row_layout_ == nullptr || secondary_control_row_widget_ == nullptr ||
-        tertiary_control_row_layout_ == nullptr || tertiary_control_row_widget_ == nullptr || control_panel_ == nullptr || lbl_time_ == nullptr)
-    {
-        return;
-    }
-
-    while (primary_control_row_layout_->count() > 0)
-    {
-        delete primary_control_row_layout_->takeAt(0);
-    }
-    while (secondary_control_row_layout_->count() > 0)
-    {
-        delete secondary_control_row_layout_->takeAt(0);
-    }
-    while (tertiary_control_row_layout_->count() > 0)
-    {
-        delete tertiary_control_row_layout_->takeAt(0);
-    }
-
-    control_panel_->setFixedHeight(96);
-    primary_control_row_layout_->setSpacing(6);
-    secondary_control_row_layout_->setSpacing(0);
-    tertiary_control_row_layout_->setSpacing(0);
-
-    auto set_button_size = [](QPushButton *button, const QSize &size)
-    {
-        if (button != nullptr)
-        {
-            button->setFixedSize(size);
-        }
-    };
-
-    for (QPushButton *button : {btn_stop_, btn_backward_, btn_forward_})
-    {
-        set_button_size(button, QSize(38, 38));
-    }
-    set_button_size(btn_play_pause_, QSize(46, 42));
-
-    for (QPushButton *button : {btn_audio_only_, btn_hardware_decode_})
-    {
-        set_button_size(button, QSize(58, 36));
-    }
-    set_button_size(btn_playback_rate_, QSize(54, 36));
-
-    for (QPushButton *button : {btn_open_media_, btn_video_fullscreen_, btn_playlist_})
-    {
-        set_button_size(button, QSize(40, 36));
-    }
-
-    if (volume_meter_ != nullptr)
-    {
-        volume_meter_->setFixedSize(70, 10);
-    }
-    lbl_vol_icon_low_->setFixedSize(20, 20);
-    lbl_time_->setMinimumWidth(168);
-    lbl_time_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-    QFont time_font = lbl_time_->font();
-    time_font.setPointSize(15);
-    lbl_time_->setFont(time_font);
-
-    primary_control_row_layout_->addWidget(lbl_time_);
-    primary_control_row_layout_->addSpacing(6);
-    primary_control_row_layout_->addWidget(btn_playback_rate_);
-    primary_control_row_layout_->addWidget(lbl_vol_icon_low_);
-    primary_control_row_layout_->addWidget(volume_meter_);
-    primary_control_row_layout_->addStretch(1);
-    primary_control_row_layout_->addWidget(btn_stop_);
-    primary_control_row_layout_->addWidget(btn_backward_);
-    primary_control_row_layout_->addWidget(btn_play_pause_);
-    primary_control_row_layout_->addWidget(btn_forward_);
-    primary_control_row_layout_->addStretch(1);
-    primary_control_row_layout_->addWidget(btn_audio_only_);
-    primary_control_row_layout_->addWidget(btn_hardware_decode_);
-    primary_control_row_layout_->addSpacing(4);
-    primary_control_row_layout_->addWidget(btn_open_media_);
-    primary_control_row_layout_->addWidget(btn_video_fullscreen_);
-    primary_control_row_layout_->addWidget(btn_playlist_);
-    secondary_control_row_widget_->hide();
-    tertiary_control_row_widget_->hide();
 }
 
 void main_window::play_selected_playlist_item()
