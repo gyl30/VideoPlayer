@@ -17,6 +17,7 @@ std::atomic<int> seek_calls{0};
 std::atomic<bool> fail_seek{false};
 std::atomic<int> read_error{0};
 std::atomic<bool> fail_audio_device{false};
+int audio_changes = -1;
 }
 
 extern "C"
@@ -71,6 +72,7 @@ int __wrap_av_read_frame(AVFormatContext *context, AVPacket *packet)
 SDL_AudioDeviceID __wrap_SDL_OpenAudioDevice(const char *device, int capture, const SDL_AudioSpec *wanted,
                                             SDL_AudioSpec *obtained, int changes)
 {
+    audio_changes = changes;
     return fail_audio_device.load() ? 0 : __real_SDL_OpenAudioDevice(device, capture, wanted, obtained, changes);
 }
 }
@@ -190,6 +192,7 @@ void player_tests::init()
     fail_seek.store(false);
     read_error.store(0);
     fail_audio_device.store(false);
+    audio_changes = -1;
 #endif
 }
 
@@ -236,6 +239,9 @@ void player_tests::audio_subsystem()
     QVERIFY(SDL_WasInit(SDL_INIT_AUDIO) != 0);
     audio.close();
     QCOMPARE(SDL_WasInit(SDL_INIT_AUDIO), Uint32(0));
+#ifdef TEST_FFMPEG_FAILURES
+    QCOMPARE(audio_changes, 0);
+#endif
 }
 
 void player_tests::finish_playback_data()

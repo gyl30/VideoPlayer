@@ -102,7 +102,7 @@ bool sdl_audio_backend::init(safe_queue<std::shared_ptr<media_frame>> *frame_que
     wanted_spec.callback = audio_callback_static;
     wanted_spec.userdata = this;
 
-    audio_dev_ = SDL_OpenAudioDevice(nullptr, 0, &wanted_spec, nullptr, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
+    audio_dev_ = SDL_OpenAudioDevice(nullptr, 0, &wanted_spec, nullptr, 0);
     if (audio_dev_ == 0)
     {
         LOG_ERROR("sdl open audio device failed");
