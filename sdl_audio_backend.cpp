@@ -198,6 +198,12 @@ void sdl_audio_backend::close()
     destroy_filter_graph();
 }
 
+bool sdl_audio_backend::finished()
+{
+    std::lock_guard<std::mutex> lock(pcm_mutex_);
+    return finished_serial_.load() == packet_queue_->serial() && pcm_queue_.empty() && clock_->get() >= finished_pts_.load();
+}
+
 void sdl_audio_backend::audio_callback_static(void *userdata, Uint8 *stream, int len)
 {
     auto *backend = static_cast<sdl_audio_backend *>(userdata);
@@ -318,7 +324,7 @@ void sdl_audio_backend::process_audio()
 
         if (take_flush_request())
         {
-            continue;
+            destroy_filter_graph();
         }
 
         if (!frame->flush() && frame->serial() != packet_queue_->serial())
@@ -329,6 +335,7 @@ void sdl_audio_backend::process_audio()
         if (frame->flush())
         {
             LOG_INFO("audio process thread received flush");
+            finished_serial_.store(-1);
             clear_pcm_queue();
             destroy_filter_graph();
             active_generation = config_generation_.load();
@@ -338,49 +345,60 @@ void sdl_audio_backend::process_audio()
             continue;
         }
 
-        const uint64_t target_generation = config_generation_.load();
-        if (target_generation != active_generation)
+        if (frame->eof() && filter_graph_ == nullptr)
         {
-            active_generation = target_generation;
+            finished_pts_.store(0.0);
+            finished_serial_.store(frame->serial());
+            continue;
         }
 
+        AVFrame *input_frame = nullptr;
         const double playback_rate = playback_rate_.load();
-        if (!media_cursor_valid && frame->raw()->pts != AV_NOPTS_VALUE)
+        if (!frame->eof())
         {
-            media_cursor = frame_pts_seconds(frame->raw(), time_base_);
-            media_cursor_valid = true;
-        }
-        if (filter_graph_ == nullptr || !filter_matches_frame(frame->raw()))
-        {
-            destroy_filter_graph();
-            if (!configure_filter_graph(frame->raw(), playback_rate))
+            const uint64_t target_generation = config_generation_.load();
+            if (target_generation != active_generation)
             {
-                LOG_ERROR("audio process thread failed to configure filter graph");
-                continue;
+                active_generation = target_generation;
             }
-        }
-        else if (std::abs(filter_playback_rate_ - playback_rate) >= 0.0001)
-        {
-            if (!update_filter_playback_rate(playback_rate))
+
+            if (!media_cursor_valid && frame->raw()->pts != AV_NOPTS_VALUE)
+            {
+                media_cursor = frame_pts_seconds(frame->raw(), time_base_);
+                media_cursor_valid = true;
+            }
+            if (filter_graph_ == nullptr || !filter_matches_frame(frame->raw()))
             {
                 destroy_filter_graph();
                 if (!configure_filter_graph(frame->raw(), playback_rate))
                 {
-                    LOG_ERROR("audio process thread failed to reconfigure filter graph");
+                    LOG_ERROR("audio process thread failed to configure filter graph");
                     continue;
                 }
             }
-        }
+            else if (std::abs(filter_playback_rate_ - playback_rate) >= 0.0001)
+            {
+                if (!update_filter_playback_rate(playback_rate))
+                {
+                    destroy_filter_graph();
+                    if (!configure_filter_graph(frame->raw(), playback_rate))
+                    {
+                        LOG_ERROR("audio process thread failed to reconfigure filter graph");
+                        continue;
+                    }
+                }
+            }
 
-        AVFrame *input_frame = av_frame_clone(frame->raw());
-        if (input_frame == nullptr)
-        {
-            LOG_ERROR("audio process thread failed to clone input frame");
-            continue;
-        }
-        if (input_frame->pts != AV_NOPTS_VALUE)
-        {
-            input_frame->pts = av_rescale_q(input_frame->pts, time_base_, k_filter_time_base);
+            input_frame = av_frame_clone(frame->raw());
+            if (input_frame == nullptr)
+            {
+                LOG_ERROR("audio process thread failed to clone input frame");
+                continue;
+            }
+            if (input_frame->pts != AV_NOPTS_VALUE)
+            {
+                input_frame->pts = av_rescale_q(input_frame->pts, time_base_, k_filter_time_base);
+            }
         }
 
         const int add_ret = av_buffersrc_add_frame_flags(buffersrc_ctx_, input_frame, AV_BUFFERSRC_FLAG_KEEP_REF);
@@ -507,6 +525,12 @@ void sdl_audio_backend::process_audio()
             }
 
             av_frame_free(&filtered_frame);
+        }
+
+        if (frame->eof())
+        {
+            finished_pts_.store(media_cursor);
+            finished_serial_.store(frame->serial());
         }
     }
 

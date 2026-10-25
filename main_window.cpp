@@ -3302,7 +3302,8 @@ void main_window::on_update_ui()
     const double raw_current = pending_seek_target_ >= 0.0 ? pending_seek_target_ : clock_->get();
     const double current = duration_ > 0.0 ? std::clamp(raw_current, 0.0, duration_) : raw_current;
 
-    if (demuxer_ != nullptr && demuxer_->eof_reached() && duration_ > 0.0 && current >= duration_ - 0.1)
+    if (demuxer_ != nullptr && demuxer_->eof_reached() && pending_seek_target_ < 0.0 &&
+        (sync_thread_ == nullptr || sync_thread_->finished()) && (audio_backend_ == nullptr || audio_backend_->finished()))
     {
         finish_playback();
         return;
@@ -3402,12 +3403,13 @@ void main_window::finish_playback()
     }
 
     LOG_INFO("playback reached end resetting ui");
+    const double end_time = duration_ > 0.0 ? std::clamp(clock_->get(), 0.0, duration_) : clock_->get();
     stop_play();
 
-    const int end_value = qMax(0, static_cast<int>(duration_));
+    const int end_value = qMax(0, static_cast<int>(end_time));
     slider_seek_->setValue(end_value);
     slider_seek_->setEnabled(false);
-    lbl_time_->setText(QString("%1 / %2").arg(format_time(duration_), format_time(duration_)));
+    lbl_time_->setText(QString("%1 / %2").arg(format_time(end_time), format_time(duration_)));
     btn_play_pause_->setIcon(QIcon(":/icons/play.svg"));
     btn_play_pause_->setToolTip("播放");
 }

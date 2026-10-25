@@ -86,11 +86,19 @@ class media_frame
     static std::shared_ptr<media_frame> create_flush()
     {
         auto frame = std::make_shared<media_frame>();
-        frame->flush_ = true;
+        frame->type_ = frame_type::flush;
         return frame;
     }
 
-    [[nodiscard]] bool flush() const { return flush_; }
+    static std::shared_ptr<media_frame> create_eof()
+    {
+        auto frame = std::make_shared<media_frame>();
+        frame->type_ = frame_type::eof;
+        return frame;
+    }
+
+    [[nodiscard]] bool flush() const { return type_ == frame_type::flush; }
+    [[nodiscard]] bool eof() const { return type_ == frame_type::eof; }
 
     media_frame(const media_frame &) = delete;
     media_frame &operator=(const media_frame &) = delete;
@@ -98,7 +106,7 @@ class media_frame
     media_frame(media_frame &&other) noexcept
     {
         frame_ = other.frame_;
-        flush_ = other.flush_;
+        type_ = other.type_;
         serial_ = other.serial_;
         other.frame_ = nullptr;
     }
@@ -112,7 +120,7 @@ class media_frame
                 av_frame_free(&frame_);
             }
             frame_ = other.frame_;
-            flush_ = other.flush_;
+            type_ = other.type_;
             serial_ = other.serial_;
             other.frame_ = nullptr;
         }
@@ -125,7 +133,8 @@ class media_frame
     [[nodiscard]] int serial() const { return serial_; }
 
    private:
-    bool flush_ = false;
+    enum class frame_type { data, flush, eof };
+    frame_type type_ = frame_type::data;
     int serial_ = 0;
     AVFrame *frame_ = nullptr;
 };

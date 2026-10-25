@@ -45,6 +45,7 @@ class sdl_audio_backend
     void set_volume(int percent);
     void flush();
     void close();
+    [[nodiscard]] bool finished();
 
    private:
     struct pcm_chunk
@@ -79,6 +80,8 @@ class sdl_audio_backend
     SDL_AudioDeviceID audio_dev_ = 0;
     std::thread process_thread_;
     std::atomic<bool> stop_{false};
+    std::atomic<int> finished_serial_{-1};
+    std::atomic<double> finished_pts_{0.0};
     std::atomic<double> playback_rate_{1.0};
     std::atomic<uint64_t> config_generation_{0};
     std::atomic<uint64_t> flush_generation_{0};

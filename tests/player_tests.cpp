@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QAction>
 #include <QTemporaryDir>
 #include <QProcess>
 #include <QtTest>
@@ -14,6 +15,7 @@ std::atomic<int> fail_codec_type{-1};
 std::atomic<int> closed_inputs{0};
 std::atomic<int> seek_calls{0};
 std::atomic<bool> fail_seek{false};
+std::atomic<int> read_error{0};
 std::atomic<bool> fail_audio_device{false};
 }
 
@@ -23,6 +25,7 @@ int __real_avformat_find_stream_info(AVFormatContext *, AVDictionary **);
 void __real_avformat_close_input(AVFormatContext **);
 int __real_avcodec_open2(AVCodecContext *, const AVCodec *, AVDictionary **);
 int __real_avformat_seek_file(AVFormatContext *, int, int64_t, int64_t, int64_t, int);
+int __real_av_read_frame(AVFormatContext *, AVPacket *);
 SDL_AudioDeviceID __real_SDL_OpenAudioDevice(const char *, int, const SDL_AudioSpec *, SDL_AudioSpec *, int);
 
 int __wrap_avformat_find_stream_info(AVFormatContext *context, AVDictionary **options)
@@ -59,6 +62,12 @@ int __wrap_avformat_seek_file(AVFormatContext *context, int stream, int64_t min,
     return result;
 }
 
+int __wrap_av_read_frame(AVFormatContext *context, AVPacket *packet)
+{
+    const int error = read_error.exchange(0);
+    return error == 0 ? __real_av_read_frame(context, packet) : error;
+}
+
 SDL_AudioDeviceID __wrap_SDL_OpenAudioDevice(const char *device, int capture, const SDL_AudioSpec *wanted,
                                             SDL_AudioSpec *obtained, int changes)
 {
@@ -80,6 +89,10 @@ class player_tests : public QObject
     void sync_stop();
     void stop_before_decode();
     void audio_subsystem();
+    void finish_playback_data();
+    void finish_playback();
+    void seek_after_eof();
+    void window_interaction();
 #ifdef TEST_FFMPEG_FAILURES
     void init_failure_data();
     void init_failure();
@@ -94,6 +107,8 @@ class player_tests : public QObject
     QString audio_path_;
     QString other_audio_path_;
     QString video_path_;
+    QString unknown_duration_path_;
+    QString video_only_path_;
 };
 
 void player_tests::sync_stop_data()
@@ -153,6 +168,14 @@ void player_tests::initTestCase()
                             "-y", video_path_});
     QVERIFY(ffmpeg.waitForFinished());
     QCOMPARE(ffmpeg.exitCode(), 0);
+    unknown_duration_path_ = directory_.filePath("unknown.mkv");
+    ffmpeg.start("ffmpeg", {"-v", "error", "-i", video_path_, "-c:v", "copy", "-c:a", "aac", "-live", "1", "-y", unknown_duration_path_});
+    QVERIFY(ffmpeg.waitForFinished());
+    QCOMPARE(ffmpeg.exitCode(), 0);
+    video_only_path_ = directory_.filePath("video-only.mkv");
+    ffmpeg.start("ffmpeg", {"-v", "error", "-i", video_path_, "-c:v", "copy", "-an", "-y", video_only_path_});
+    QVERIFY(ffmpeg.waitForFinished());
+    QCOMPARE(ffmpeg.exitCode(), 0);
 }
 
 void player_tests::init()
@@ -165,6 +188,7 @@ void player_tests::init()
     closed_inputs.store(0);
     seek_calls.store(0);
     fail_seek.store(false);
+    read_error.store(0);
     fail_audio_device.store(false);
 #endif
 }
@@ -212,6 +236,103 @@ void player_tests::audio_subsystem()
     QVERIFY(SDL_WasInit(SDL_INIT_AUDIO) != 0);
     audio.close();
     QCOMPARE(SDL_WasInit(SDL_INIT_AUDIO), Uint32(0));
+}
+
+void player_tests::finish_playback_data()
+{
+    QTest::addColumn<QString>("path");
+    QTest::addColumn<int>("error");
+    QTest::addColumn<double>("rate");
+    QTest::newRow("音视频") << video_path_ << 0 << 1.0;
+    QTest::newRow("仅音频") << audio_path_ << 0 << 1.0;
+    QTest::newRow("仅视频") << video_only_path_ << 0 << 1.0;
+    QTest::newRow("未知时长") << unknown_duration_path_ << 0 << 1.0;
+    QTest::newRow("未知时长慢放") << unknown_duration_path_ << 0 << 0.5;
+#ifdef TEST_FFMPEG_FAILURES
+    QTest::newRow("读取错误") << audio_path_ << AVERROR(EIO) << 1.0;
+    QTest::newRow("暂时无数据") << video_path_ << AVERROR(EAGAIN) << 1.0;
+#endif
+}
+
+void player_tests::finish_playback()
+{
+    QFETCH(QString, path);
+    QFETCH(int, error);
+    QFETCH(double, rate);
+    if (path == unknown_duration_path_)
+    {
+        demuxer source;
+        QVERIFY(source.open(path.toStdString(), nullptr, nullptr));
+        QCOMPARE(source.duration(), 0.0);
+    }
+    set_playlist({path});
+    main_window window;
+    for (QAction *action : window.findChildren<QAction *>())
+    {
+        if (action->data().isValid() && action->data().toDouble() == rate)
+        {
+            action->trigger();
+            break;
+        }
+    }
+#ifdef TEST_FFMPEG_FAILURES
+    read_error.store(error);
+#endif
+    QElapsedTimer elapsed;
+    elapsed.start();
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_toggle_pause", Qt::DirectConnection));
+    auto *slider = window.findChild<QSlider *>("seekSlider");
+    QVERIFY(slider->isEnabled());
+    QTRY_VERIFY_WITH_TIMEOUT(!slider->isEnabled(), 6000);
+    if (error == 0)
+    {
+        QVERIFY(elapsed.elapsed() >= (path == audio_path_ ? 3700 : rate == 0.5 ? 1600 : 700));
+    }
+}
+
+void player_tests::seek_after_eof()
+{
+    set_playlist({video_path_});
+    main_window window;
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_toggle_pause", Qt::DirectConnection));
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_toggle_pause", Qt::DirectConnection));
+    QTest::qSleep(150);
+    auto *slider = window.findChild<QSlider *>("seekSlider");
+    slider->setValue(0);
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_slider_released", Qt::DirectConnection));
+    QTest::qWait(50);
+    QVERIFY(slider->isEnabled());
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_toggle_pause", Qt::DirectConnection));
+    auto *surface = window.findChild<video_widget *>("videoSurface");
+    QTRY_VERIFY_WITH_TIMEOUT(surface->has_frame(), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(!slider->isEnabled(), 3000);
+}
+
+void player_tests::window_interaction()
+{
+    if (QGuiApplication::platformName() == "offscreen")
+    {
+        QSKIP("此项需要 OpenGL 显示环境，使用 xvfb-run 和 xcb 执行");
+    }
+    set_playlist({video_path_});
+    main_window window;
+    window.show();
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_toggle_pause", Qt::DirectConnection));
+    auto *surface = window.findChild<video_widget *>("videoSurface");
+    QTRY_VERIFY_WITH_TIMEOUT(surface->has_frame(), 1000);
+    QVERIFY(surface->context() != nullptr && surface->context()->isValid());
+    const QString screenshot = directory_.filePath("frame.png");
+    QVERIFY(surface->save_current_frame(screenshot));
+    QCOMPARE(QImage(screenshot).size(), QSize(64, 48));
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_toggle_fullscreen", Qt::DirectConnection));
+    QVERIFY(surface->window() != &window);
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_toggle_fullscreen", Qt::DirectConnection));
+    QCOMPARE(surface->window(), &window);
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_toggle_playlist", Qt::DirectConnection));
+    QVERIFY(window.findChild<QWidget *>("playlistPanel")->isVisible());
+    window.resize(960, 480);
+    QCOMPARE(window.findChild<QWidget *>("controlPanel")->height(), 96);
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_stop_pressed", Qt::DirectConnection));
 }
 
 #ifdef TEST_FFMPEG_FAILURES

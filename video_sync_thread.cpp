@@ -23,6 +23,11 @@ void video_sync_thread::paused(bool p)
     paused_.store(p);
 }
 
+bool video_sync_thread::finished() const
+{
+    return finished_serial_.load() == packet_queue_->serial();
+}
+
 void video_sync_thread::run()
 {
     LOG_INFO("video sync thread run loop started");
@@ -56,6 +61,13 @@ void video_sync_thread::run()
         if (frame->flush())
         {
             LOG_INFO("video sync thread received flush");
+            finished_serial_.store(-1);
+            continue;
+        }
+
+        if (frame->eof())
+        {
+            finished_serial_.store(frame->serial());
             continue;
         }
 

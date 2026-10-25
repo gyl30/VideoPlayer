@@ -21,6 +21,7 @@ class video_sync_thread : public QThread
    public:
     void stop();
     void paused(bool p);
+    [[nodiscard]] bool finished() const;
 
    protected:
     void run() override;
@@ -29,6 +30,7 @@ class video_sync_thread : public QThread
     void frame_ready(std::shared_ptr<media_frame> frame);
 
    private:
+    std::atomic<int> finished_serial_{-1};
     video_scaler scaler_;
     av_clock *clock_ = nullptr;
     AVRational time_base_{0, 1};

@@ -256,7 +256,10 @@ void decoder::run()
         if (ret < 0)
         {
             LOG_ERROR("decoder avcodec send packet failed code {} name {}", ret, name_);
-            continue;
+            if (raw_pkt != nullptr)
+            {
+                continue;
+            }
         }
 
         while (ret >= 0)
@@ -332,6 +335,12 @@ void decoder::run()
         if (raw_pkt == nullptr)
         {
             LOG_INFO("decoder finished draining, waiting for next command name {}", name_);
+            if (frame_queue_ != nullptr)
+            {
+                auto eof_frame = media_frame::create_eof();
+                eof_frame->set_serial(current_serial);
+                frame_queue_->push(eof_frame);
+            }
         }
     }
 

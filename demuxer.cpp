@@ -221,31 +221,30 @@ void demuxer::run()
         const int ret = av_read_frame(fmt_ctx_, pkt->raw());
         if (ret < 0)
         {
-            if (ret == AVERROR_EOF)
-            {
-                LOG_INFO("demuxer reached end of file");
-                eof_reached = true;
-                eof_reached_.store(true);
-
-                if (video_queue_ != nullptr)
-                {
-                    video_queue_->push(nullptr);
-                }
-                if (audio_queue_ != nullptr)
-                {
-                    audio_queue_->push(nullptr);
-                }
-
-                continue;
-            }
-
             if (abort_.load())
             {
                 LOG_INFO("demuxer aborted during read frame");
                 break;
             }
-            LOG_ERROR("demuxer read frame failed code {}", ret);
+            if (ret == AVERROR(EAGAIN))
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }
+            if (ret != AVERROR_EOF)
+            {
+                LOG_ERROR("demuxer read frame failed code {}", ret);
+            }
             eof_reached = true;
+            eof_reached_.store(true);
+            if (video_queue_ != nullptr)
+            {
+                video_queue_->push(nullptr);
+            }
+            if (audio_queue_ != nullptr)
+            {
+                audio_queue_->push(nullptr);
+            }
             continue;
         }
 
