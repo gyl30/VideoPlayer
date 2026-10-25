@@ -30,3 +30,14 @@ set_tests_properties(player_tests PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;SDL_AUDIODRIVER=dummy"
     TIMEOUT 60
 )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+    find_package(Threads REQUIRED)
+    add_executable(queue_abort_test queue_abort_test.cpp)
+    target_include_directories(queue_abort_test PRIVATE "${PROJECT_SOURCE_DIR}")
+    target_compile_options(queue_abort_test PRIVATE ${HARDENING_FLAGS_COMMON} ${SANITIZER_COMPILE_FLAGS})
+    target_link_options(queue_abort_test PRIVATE ${HARDENING_LINKER_FLAGS} ${SANITIZER_LINK_FLAGS})
+    target_link_libraries(queue_abort_test PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
+    add_test(NAME queue_abort_test COMMAND queue_abort_test)
+    set_tests_properties(queue_abort_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 5)
+endif()

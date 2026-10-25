@@ -61,6 +61,7 @@ class safe_queue
 
     void abort()
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         abort_flag_.store(true);
         cond_not_empty_.notify_all();
         cond_not_full_.notify_all();
