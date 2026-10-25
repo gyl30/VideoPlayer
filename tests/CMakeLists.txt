@@ -19,6 +19,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         -Wl,--wrap=avformat_find_stream_info
         -Wl,--wrap=avformat_close_input
         -Wl,--wrap=avcodec_open2
+        -Wl,--wrap=avformat_seek_file
     )
 endif()
 

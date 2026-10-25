@@ -3559,11 +3559,15 @@ bool main_window::start_play(const std::string &filepath)
     LOG_INFO("demuxer opened");
 
     demuxer_->set_seek_cb(
-        [this](double time)
+        [this, playback_generation](double time)
         {
             QMetaObject::invokeMethod(this,
-                                      [this, time]()
+                                      [this, playback_generation, time]()
                                       {
+                                          if (playback_generation != playback_generation_)
+                                          {
+                                              return;
+                                          }
                                           LOG_INFO("UI received seek finish callback time {}", time);
                                           if (pending_seek_target_ >= 0.0 && std::abs(pending_seek_target_ - time) > 0.5)
                                           {

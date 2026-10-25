@@ -12,6 +12,7 @@ namespace
 std::atomic<bool> fail_stream_info{false};
 std::atomic<int> fail_codec_type{-1};
 std::atomic<int> closed_inputs{0};
+std::atomic<int> seek_calls{0};
 }
 
 extern "C"
@@ -19,6 +20,7 @@ extern "C"
 int __real_avformat_find_stream_info(AVFormatContext *, AVDictionary **);
 void __real_avformat_close_input(AVFormatContext **);
 int __real_avcodec_open2(AVCodecContext *, const AVCodec *, AVDictionary **);
+int __real_avformat_seek_file(AVFormatContext *, int, int64_t, int64_t, int64_t, int);
 
 int __wrap_avformat_find_stream_info(AVFormatContext *context, AVDictionary **options)
 {
@@ -46,6 +48,13 @@ int __wrap_avcodec_open2(AVCodecContext *context, const AVCodec *codec, AVDictio
     }
     return __real_avcodec_open2(context, codec, options);
 }
+
+int __wrap_avformat_seek_file(AVFormatContext *context, int stream, int64_t min, int64_t target, int64_t max, int flags)
+{
+    const int result = __real_avformat_seek_file(context, stream, min, target, max, flags);
+    ++seek_calls;
+    return result;
+}
 }
 #endif
 
@@ -64,12 +73,15 @@ class player_tests : public QObject
 #ifdef TEST_FFMPEG_FAILURES
     void init_failure_data();
     void init_failure();
+    void stale_seek_data();
+    void stale_seek();
 #endif
 
    private:
     void set_playlist(const QStringList &paths);
     QTemporaryDir directory_;
     QString audio_path_;
+    QString other_audio_path_;
     QString video_path_;
 };
 
@@ -123,6 +135,8 @@ void player_tests::initTestCase()
                             "-y", audio_path_});
     QVERIFY(ffmpeg.waitForFinished());
     QCOMPARE(ffmpeg.exitCode(), 0);
+    other_audio_path_ = directory_.filePath("other.wav");
+    QVERIFY(QFile::copy(audio_path_, other_audio_path_));
     ffmpeg.start("ffmpeg", {"-v", "error", "-f", "lavfi", "-i", "testsrc2=size=64x48:rate=10:duration=1",
                             "-f", "lavfi", "-i", "sine=duration=1", "-c:v", "mpeg4", "-c:a", "pcm_s16le",
                             "-y", video_path_});
@@ -138,6 +152,7 @@ void player_tests::init()
     fail_stream_info.store(false);
     fail_codec_type.store(-1);
     closed_inputs.store(0);
+    seek_calls.store(0);
 #endif
 }
 
@@ -174,6 +189,37 @@ void player_tests::stop_before_decode()
 }
 
 #ifdef TEST_FFMPEG_FAILURES
+void player_tests::stale_seek_data()
+{
+    QTest::addColumn<QByteArray>("action");
+    QTest::newRow("切换媒体") << QByteArray("on_play_next");
+    QTest::newRow("停止媒体") << QByteArray("on_stop_pressed");
+}
+
+void player_tests::stale_seek()
+{
+    QFETCH(QByteArray, action);
+    set_playlist({audio_path_, other_audio_path_});
+    main_window window;
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_toggle_pause", Qt::DirectConnection));
+    auto *slider = window.findChild<QSlider *>("seekSlider");
+    QVERIFY(slider->isEnabled());
+    slider->setValue(2);
+    QVERIFY(QMetaObject::invokeMethod(&window, "on_slider_released", Qt::DirectConnection));
+    QElapsedTimer deadline;
+    deadline.start();
+    while (seek_calls.load() == 0 && deadline.elapsed() < 1000)
+    {
+        QTest::qSleep(1);
+    }
+    QVERIFY(seek_calls.load() > 0);
+    QVERIFY(QMetaObject::invokeMethod(&window, action.constData(), Qt::DirectConnection));
+    QCOMPARE(slider->value(), 0);
+    QCoreApplication::sendPostedEvents(&window, QEvent::MetaCall);
+    QCOMPARE(slider->value(), 0);
+    QCOMPARE(window.findChild<QLabel *>("timeLabel")->text().left(8), QString("00:00:00"));
+}
+
 void player_tests::init_failure_data()
 {
     QTest::addColumn<int>("stage");
