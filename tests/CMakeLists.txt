@@ -5,6 +5,8 @@ list(REMOVE_ITEM player_sources main.cpp)
 list(TRANSFORM player_sources PREPEND "${PROJECT_SOURCE_DIR}/")
 
 add_executable(player_tests player_tests.cpp ${player_sources})
+# QtTest 提供入口，避免 SDL 将 main 改写为 SDL_main。
+target_compile_definitions(player_tests PRIVATE SDL_MAIN_HANDLED)
 target_include_directories(player_tests PRIVATE "${PROJECT_SOURCE_DIR}")
 foreach(property COMPILE_OPTIONS INCLUDE_DIRECTORIES LINK_DIRECTORIES LINK_LIBRARIES LINK_OPTIONS)
     get_target_property(value VideoPlayer ${property})
