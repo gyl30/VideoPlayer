@@ -53,6 +53,10 @@ video_widget::video_widget(QWidget *parent) : QOpenGLWidget(parent) { LOG_INFO("
 video_widget::~video_widget()
 {
     LOG_INFO("video widget destroying");
+    if (context() != nullptr)
+    {
+        disconnect(context(), &QOpenGLContext::aboutToBeDestroyed, this, &video_widget::cleanup_gl_resources);
+    }
     cleanup_gl_resources();
 }
 
