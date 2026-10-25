@@ -344,30 +344,16 @@ bool playlist_store::remove_rows(const QString &id, const QList<int> &rows)
         return false;
     }
 
-    QList<int> sorted_rows = valid_rows;
-    std::sort(sorted_rows.begin(), sorted_rows.end(), std::greater<int>());
-
-    bool removed = false;
     const int original_current_row = playlists_[index].current_row;
     int removed_before_current_row = 0;
-    bool removed_current_row = false;
-    for (int row : sorted_rows)
+    for (auto it = valid_rows.crbegin(); it != valid_rows.crend(); ++it)
     {
-        if (row == original_current_row)
-        {
-            removed_current_row = true;
-        }
-        else if (row < original_current_row)
+        const int row = *it;
+        if (row < original_current_row)
         {
             ++removed_before_current_row;
         }
         playlists_[index].paths.removeAt(row);
-        removed = true;
-    }
-
-    if (!removed)
-    {
-        return false;
     }
 
     if (playlists_[index].paths.isEmpty())
@@ -377,11 +363,6 @@ bool playlist_store::remove_rows(const QString &id, const QList<int> &rows)
     else if (original_current_row < 0)
     {
         playlists_[index].current_row = 0;
-    }
-    else if (removed_current_row)
-    {
-        const int next_row = original_current_row - removed_before_current_row;
-        playlists_[index].current_row = std::clamp(next_row, 0, static_cast<int>(playlists_[index].paths.size() - 1));
     }
     else
     {

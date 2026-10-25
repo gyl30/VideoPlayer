@@ -214,3 +214,8 @@ if(UNIX AND NOT APPLE)
 endif()
 
 include(CPack)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
