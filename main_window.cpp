@@ -3559,10 +3559,10 @@ bool main_window::start_play(const std::string &filepath)
     LOG_INFO("demuxer opened");
 
     demuxer_->set_seek_cb(
-        [this, playback_generation](double time)
+        [this, playback_generation](bool success, double time)
         {
             QMetaObject::invokeMethod(this,
-                                      [this, playback_generation, time]()
+                                      [this, playback_generation, success, time]()
                                       {
                                           if (playback_generation != playback_generation_)
                                           {
@@ -3574,6 +3574,11 @@ bool main_window::start_play(const std::string &filepath)
                                               return;
                                           }
                                           pending_seek_target_ = -1.0;
+                                          if (!success)
+                                          {
+                                              clock_->set(clock_->get(), -1);
+                                              return;
+                                          }
                                           if (!slider_seek_->isSliderDown())
                                           {
                                               slider_seek_->setValue(static_cast<int>(time));

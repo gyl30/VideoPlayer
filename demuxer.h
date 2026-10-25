@@ -5,6 +5,7 @@
 #include <vector>
 #include <atomic>
 #include <functional>
+#include <mutex>
 #include <QString>
 #include "safe_queue.h"
 #include "media_objects.h"
@@ -25,7 +26,7 @@ class demuxer
     void stop();
     void run();
 
-    void set_seek_cb(std::function<void(double)> cb);
+    void set_seek_cb(std::function<void(bool, double)> cb);
 
    public:
     [[nodiscard]] int video_index() const;
@@ -46,13 +47,14 @@ class demuxer
     int audio_index_ = -1;
     AVFormatContext *fmt_ctx_ = nullptr;
     std::atomic<double> seek_req_{-1.0};
+    std::mutex seek_mutex_;
 
     std::atomic<bool> abort_{false};
     std::atomic<bool> eof_reached_{false};
     safe_queue<std::shared_ptr<media_packet>> *video_queue_ = nullptr;
     safe_queue<std::shared_ptr<media_packet>> *audio_queue_ = nullptr;
 
-    std::function<void(double)> seek_cb_ = nullptr;
+    std::function<void(bool, double)> seek_cb_ = nullptr;
 };
 
 #endif

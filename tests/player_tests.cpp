@@ -13,6 +13,7 @@ std::atomic<bool> fail_stream_info{false};
 std::atomic<int> fail_codec_type{-1};
 std::atomic<int> closed_inputs{0};
 std::atomic<int> seek_calls{0};
+std::atomic<bool> fail_seek{false};
 }
 
 extern "C"
@@ -51,7 +52,7 @@ int __wrap_avcodec_open2(AVCodecContext *context, const AVCodec *codec, AVDictio
 
 int __wrap_avformat_seek_file(AVFormatContext *context, int stream, int64_t min, int64_t target, int64_t max, int flags)
 {
-    const int result = __real_avformat_seek_file(context, stream, min, target, max, flags);
+    const int result = fail_seek.load() ? AVERROR(ENOSYS) : __real_avformat_seek_file(context, stream, min, target, max, flags);
     ++seek_calls;
     return result;
 }
@@ -75,6 +76,7 @@ class player_tests : public QObject
     void init_failure();
     void stale_seek_data();
     void stale_seek();
+    void seek_failure();
 #endif
 
    private:
@@ -153,6 +155,7 @@ void player_tests::init()
     fail_codec_type.store(-1);
     closed_inputs.store(0);
     seek_calls.store(0);
+    fail_seek.store(false);
 #endif
 }
 
@@ -189,6 +192,35 @@ void player_tests::stop_before_decode()
 }
 
 #ifdef TEST_FFMPEG_FAILURES
+void player_tests::seek_failure()
+{
+    safe_queue<std::shared_ptr<media_packet>> packets(1000);
+    demuxer source;
+    QVERIFY(source.open(audio_path_.toStdString(), nullptr, &packets));
+    std::atomic<int> callbacks{0};
+    source.set_seek_cb([&](auto...) { ++callbacks; });
+    fail_seek.store(true);
+    source.seek(2.0);
+    std::thread worker([&]() { source.run(); });
+    QTest::qSleep(100);
+    const bool recovered = packets.push(std::make_shared<media_packet>());
+    const int failure_callbacks = callbacks.load();
+    fail_seek.store(false);
+    source.seek(0.0);
+    QElapsedTimer deadline;
+    deadline.start();
+    while (callbacks.load() < 2 && deadline.elapsed() < 1000)
+    {
+        QTest::qSleep(1);
+    }
+    source.stop();
+    packets.abort();
+    worker.join();
+    QVERIFY(recovered);
+    QCOMPARE(failure_callbacks, 1);
+    QCOMPARE(callbacks.load(), 2);
+}
+
 void player_tests::stale_seek_data()
 {
     QTest::addColumn<QByteArray>("action");

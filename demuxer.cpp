@@ -25,7 +25,7 @@ int demuxer::interrupt_cb(void *ctx)
     return 0;
 }
 
-void demuxer::set_seek_cb(std::function<void(double)> cb) { seek_cb_ = std::move(cb); }
+void demuxer::set_seek_cb(std::function<void(bool, double)> cb) { seek_cb_ = std::move(cb); }
 
 [[nodiscard]] AVCodecParameters *demuxer::codec_par(int stream_index) const
 {
@@ -97,6 +97,7 @@ AVRational demuxer::frame_rate(int stream_index) const
 
 void demuxer::seek(double seconds)
 {
+    std::lock_guard<std::mutex> lock(seek_mutex_);
     LOG_INFO("demuxer seek requested to {}", seconds);
     eof_reached_.store(false);
     if (video_queue_ != nullptr)
@@ -170,60 +171,41 @@ void demuxer::run()
 
     while (!abort_.load())
     {
-        const double target = seek_req_.exchange(-1.0);
-        if (target >= 0.0)
         {
-            LOG_INFO("demuxer performing seek to {}", target);
-            const auto seek_target = static_cast<int64_t>(target * AV_TIME_BASE);
-
-            const int64_t seek_min = INT64_MIN;
-            const int64_t seek_max = INT64_MAX;
-
-            const int ret = avformat_seek_file(fmt_ctx_, -1, seek_min, seek_target, seek_max, AVSEEK_FLAG_BACKWARD);
-            if (ret < 0)
+            // 请求发布和队列恢复必须互斥，避免 reset 后才执行请求中的 abort。
+            std::lock_guard<std::mutex> lock(seek_mutex_);
+            const double target = seek_req_.exchange(-1.0);
+            if (target >= 0.0)
             {
-                LOG_ERROR("demuxer seek failed code {}", ret);
-            }
-            else
-            {
-                LOG_INFO("demuxer seek success clearing queues");
-
-                if (video_queue_ != nullptr)
+                LOG_INFO("demuxer performing seek to {}", target);
+                const auto seek_target = static_cast<int64_t>(target * AV_TIME_BASE);
+                const int ret = avformat_seek_file(fmt_ctx_, -1, INT64_MIN, seek_target, INT64_MAX, AVSEEK_FLAG_BACKWARD);
+                if (abort_.load())
                 {
-                    video_queue_->reset();
+                    break;
                 }
-                if (audio_queue_ != nullptr)
+                if (ret < 0)
                 {
-                    audio_queue_->reset();
+                    LOG_ERROR("demuxer seek failed code {}", ret);
                 }
 
-                if (video_queue_ != nullptr)
+                for (auto *queue : {video_queue_, audio_queue_})
                 {
-                    video_queue_->clear();
-                }
-                if (audio_queue_ != nullptr)
-                {
-                    audio_queue_->clear();
-                }
-
-                if (video_queue_ != nullptr)
-                {
+                    if (queue == nullptr)
+                    {
+                        continue;
+                    }
+                    queue->clear();
+                    queue->reset();
                     auto pkt = media_packet::create_flush();
-                    pkt->set_serial(video_queue_->serial());
-                    video_queue_->push(pkt);
-                }
-                if (audio_queue_ != nullptr)
-                {
-                    auto pkt = media_packet::create_flush();
-                    pkt->set_serial(audio_queue_->serial());
-                    audio_queue_->push(pkt);
+                    pkt->set_serial(queue->serial());
+                    queue->push(pkt);
                 }
 
                 if (seek_cb_)
                 {
-                    seek_cb_(target);
+                    seek_cb_(ret >= 0, target);
                 }
-
                 eof_reached = false;
                 eof_reached_.store(false);
             }
