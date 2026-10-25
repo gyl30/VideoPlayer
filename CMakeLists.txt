@@ -178,6 +178,18 @@ install(TARGETS VideoPlayer
     BUNDLE DESTINATION .
 )
 
+install(FILES packaging/INTERNAL-NOTICE.txt packaging/THIRD-PARTY-NOTICES.md
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/VideoPlayer
+)
+install(FILES third/spdlog/LICENSE
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/VideoPlayer/licenses
+    RENAME spdlog-MIT.txt
+)
+install(FILES third/spdlog/include/spdlog/fmt/bundled/fmt.license.rst
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/VideoPlayer/licenses
+    RENAME fmt-MIT.txt
+)
+
 if(UNIX AND NOT APPLE)
     install(FILES packaging/VideoPlayer.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
@@ -201,6 +213,7 @@ set(CPACK_PACKAGE_CONTACT "gyl30")
 set(CPACK_PACKAGE_VERSION "${PACKAGE_VERSION}")
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "VideoPlayer")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A local video player built with Qt, FFmpeg and SDL")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/INTERNAL-NOTICE.txt")
 
 if(UNIX AND NOT APPLE)
     set(CPACK_GENERATOR "DEB;RPM")
@@ -209,7 +222,7 @@ if(UNIX AND NOT APPLE)
     set(CPACK_DEBIAN_PACKAGE_SECTION "video")
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
     set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
-    set(CPACK_RPM_PACKAGE_LICENSE "Proprietary")
+    set(CPACK_RPM_PACKAGE_LICENSE "NOASSERTION")
     set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
 endif()
 

@@ -1,0 +1,13 @@
+VideoPlayer - internal validation build
+
+The VideoPlayer project has not selected a software license. This notice
+does not grant permission to redistribute the application or its sources.
+These packages are for internal installation and compatibility testing.
+
+The current Windows dependency set includes GPL-3.0-or-later FFmpeg.
+Before external distribution, the application license must be resolved and
+the exact corresponding sources, build instructions and third-party notices
+must be supplied as required by each distributed component's license.
+
+See THIRD-PARTY-NOTICES.md and the licenses directory for the dependency
+audit. These materials are an inventory, not a complete source-code offer.
