@@ -216,14 +216,47 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A local video player built with Qt, FFmpe
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/INTERNAL-NOTICE.txt")
 
 if(UNIX AND NOT APPLE)
-    set(CPACK_GENERATOR "DEB;RPM")
     set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
-    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
-    set(CPACK_DEBIAN_PACKAGE_SECTION "video")
-    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-    set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
-    set(CPACK_RPM_PACKAGE_LICENSE "NOASSERTION")
-    set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
+    if(EXISTS "/etc/debian_version")
+        set(CPACK_GENERATOR "DEB")
+        set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+        set(CPACK_DEBIAN_PACKAGE_SECTION "video")
+        set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+
+        # SVG 图标和平台插件由 Qt 动态加载，不会出现在 ELF 的依赖列表中。
+        execute_process(
+            COMMAND dpkg-query -S "*/qt6/plugins/iconengines/libqsvgicon.so"
+            OUTPUT_VARIABLE svg_plugin_owner
+            RESULT_VARIABLE svg_plugin_status
+            ERROR_QUIET
+        )
+        if(NOT svg_plugin_status EQUAL 0)
+            message(FATAL_ERROR "缺少 Qt SVG 图标插件，请安装发行版提供的插件包")
+        endif()
+        string(REGEX MATCH "^[^: \n]+" svg_plugin_package "${svg_plugin_owner}")
+        set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-qpa-plugins, ${svg_plugin_package}, fonts-noto-cjk")
+
+        file(READ "/etc/os-release" package_os_release)
+        string(REGEX MATCH "(^|\n)ID=\"?([a-z0-9_-]+)" unused "${package_os_release}")
+        set(package_distribution "${CMAKE_MATCH_2}")
+        string(REGEX MATCH "(^|\n)VERSION_ID=\"?([0-9.]+)" unused "${package_os_release}")
+        string(APPEND package_distribution "${CMAKE_MATCH_2}")
+        set(CPACK_DEBIAN_PACKAGE_RELEASE "1~${package_distribution}")
+    elseif(EXISTS "/etc/redhat-release")
+        set(CPACK_GENERATOR "RPM")
+        set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
+        set(CPACK_RPM_PACKAGE_LICENSE "NOASSERTION")
+        set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
+        set(CPACK_RPM_PACKAGE_RELEASE_DIST ON)
+        set(CPACK_RPM_PACKAGE_REQUIRES "qt6-qtsvg, font(notosanscjksc)")
+        set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
+            /usr/share/applications
+            /usr/share/icons
+            /usr/share/icons/hicolor
+            /usr/share/icons/hicolor/scalable
+            /usr/share/icons/hicolor/scalable/apps
+        )
+    endif()
 endif()
 
 include(CPack)

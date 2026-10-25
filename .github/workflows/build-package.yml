@@ -132,16 +132,32 @@ jobs:
             '
 
   package-linux:
-    name: Linux package / ${{ matrix.arch }}
+    name: Linux package / ${{ matrix.distribution }} / ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: ubuntu-22.04
+            distribution: ubuntu22.04
+            image: ubuntu:22.04
             arch: amd64
           - runner: ubuntu-24.04-arm
+            distribution: ubuntu24.04
+            image: ubuntu:24.04
             arch: arm64
+          - runner: ubuntu-22.04
+            distribution: debian12
+            image: debian:bookworm
+            arch: amd64
+          - runner: ubuntu-22.04
+            distribution: fedora43
+            image: fedora:43
+            arch: amd64
+          - runner: ubuntu-22.04
+            distribution: rocky9
+            image: rockylinux:9
+            arch: amd64
 
     steps:
       - name: Checkout
@@ -155,38 +171,36 @@ jobs:
             echo "PACKAGE_VERSION=0.1.${GITHUB_RUN_NUMBER}" >> "${GITHUB_ENV}"
           fi
 
-      - name: Install dependencies
+      - name: Build and package with native dependencies
         run: |
-          sudo apt update
-          sudo apt install -y \
-            cmake \
-            ninja-build \
-            pkg-config \
-            rpm \
-            qt6-base-dev \
-            qt6-base-dev-tools \
-            libqt6svg6-dev \
-            libsdl2-dev \
-            libavformat-dev \
-            libavcodec-dev \
-            libavutil-dev \
-            libavfilter-dev \
-            libswresample-dev \
-            libswscale-dev
-
-      - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build
-        run: cmake --build build --config Release
-
-      - name: Package
-        run: bash scripts/ci/package-linux.sh build dist
+          docker run --rm -e PACKAGE_VERSION -v "${PWD}:/src" -w /src \
+            "${{ matrix.image }}" bash -ec '
+              if [[ -f /etc/debian_version ]]; then
+                apt-get update
+                DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                  cmake make g++ pkg-config file ffmpeg qt6-base-dev libqt6opengl6-dev \
+                  libqt6svg6-dev libsdl2-dev libavformat-dev libavcodec-dev \
+                  libavutil-dev libavfilter-dev libswscale-dev
+              else
+                if [[ -f /etc/rocky-release ]]; then
+                  dnf install -y epel-release dnf-plugins-core
+                  dnf config-manager --set-enabled crb
+                fi
+                dnf install -y cmake make gcc-c++ pkgconf-pkg-config rpm-build ffmpeg-free \
+                  qt6-qtbase-devel qt6-qtsvg-devel SDL2-devel \
+                  libavformat-free-devel libavcodec-free-devel libavutil-free-devel \
+                  libavfilter-free-devel libswscale-free-devel
+              fi
+              cmake -S . -B build-package -DCMAKE_BUILD_TYPE=Release
+              cmake --build build-package -j2
+              ctest --test-dir build-package --output-on-failure
+              bash scripts/ci/package-linux.sh build-package dist
+            '
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VideoPlayer-linux-${{ matrix.arch }}
+          name: VideoPlayer-${{ matrix.distribution }}-${{ matrix.arch }}
           path: |
             dist/*.deb
             dist/*.rpm
